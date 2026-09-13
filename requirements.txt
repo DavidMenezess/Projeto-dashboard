@@ -1,0 +1,22 @@
+# --- Framework web e servidor ---
+fastapi==0.115.0
+uvicorn[standard]==0.32.0
+
+# --- Autenticação (login, senha, token) ---
+python-jose[cryptography]==3.3.0
+bcrypt==4.2.0
+python-multipart==0.0.12
+
+# --- Banco de dados (usuários) ---
+sqlalchemy==2.0.35
+
+# --- Processamento da planilha (mesma lógica do dashboard) ---
+pandas==2.2.3
+openpyxl==3.1.5
+xlrd==2.0.1
+
+# --- Configuração via variáveis de ambiente ---
+pydantic-settings==2.6.0
+
+# --- Agendamento do job de sincronização (usado na próxima etapa) ---
+apscheduler==3.10.4

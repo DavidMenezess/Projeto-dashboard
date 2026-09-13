@@ -1,0 +1,16 @@
+# Segredos e configuração local — nunca versionar
+.env
+
+# Banco de dados local
+data/*.db
+data/*.xlsx
+data/*.xls
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Docker
+*.log

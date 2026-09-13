@@ -1,0 +1,20 @@
+# Uso local: sobe a API exatamente como ela vai rodar em produção,
+# mas com o código montado como volume (edita o arquivo, reinicia o
+# container, vê o efeito — sem precisar rebuildar a imagem toda vez).
+#
+# Comandos:
+#   docker compose up --build     -> primeira vez, ou depois de mudar requirements.txt
+#   docker compose up             -> nas próximas vezes
+#   docker compose down           -> para tudo
+
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data       # planilhas e banco de usuários persistem entre reinícios
+      - ./app:/app/app         # código-fonte, para refletir mudanças sem rebuild
+    restart: unless-stopped
