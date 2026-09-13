@@ -1541,7 +1541,11 @@ criarGrafico('delegacaoChart', {
 function renderizarTiposTarefa() {
 
 // ===== Gráfico empilhado por responsável =====
-const ttRespLabels = Object.keys(TASKTYPE.resp_categoria);
+const ttRespLabels = Object.keys(TASKTYPE.resp_categoria).sort((a, b) => {
+  const totalA = TASKTYPE.resp_categoria[a].processual + TASKTYPE.resp_categoria[a].atendimento + TASKTYPE.resp_categoria[a].outras;
+  const totalB = TASKTYPE.resp_categoria[b].processual + TASKTYPE.resp_categoria[b].atendimento + TASKTYPE.resp_categoria[b].outras;
+  return totalB - totalA;
+});
 setBarHeight('taskTypeChart', ttRespLabels.length);
 criarGrafico('taskTypeChart', {
   type:'bar',
