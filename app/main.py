@@ -17,6 +17,7 @@ Rodar localmente:
 Rodar em produção: veja o Dockerfile (usa uvicorn sem --reload).
 """
 
+import asyncio
 import logging
 from datetime import datetime, timezone, timedelta
 from fastapi import FastAPI, Depends, HTTPException, status
@@ -70,7 +71,22 @@ def ao_iniciar():
     """Roda uma vez quando o servidor sobe: cria as tabelas e faz a primeira carga de dados."""
     criar_tabelas()
     _sincronizar_dados_locais()
+    asyncio.create_task(_loop_sincronizacao_automatica())
     logger.info("API iniciada e dados carregados.")
+
+
+INTERVALO_SINCRONIZACAO_MINUTOS = 10
+
+
+async def _loop_sincronizacao_automatica():
+    """Reprocessa as planilhas periodicamente, sem precisar reiniciar o container."""
+    while True:
+        await asyncio.sleep(INTERVALO_SINCRONIZACAO_MINUTOS * 60)
+        try:
+            _sincronizar_dados_locais()
+            logger.info("Re-sincronizacao automatica concluida.")
+        except Exception:
+            logger.exception("Falha na re-sincronizacao automatica - mantendo os ultimos dados validos em cache.")
 
 
 def _sincronizar_dados_locais():
