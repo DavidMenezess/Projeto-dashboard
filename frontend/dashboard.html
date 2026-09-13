@@ -2194,30 +2194,6 @@ const REGISTRO_SLIDES_APRESENTACAO = [
     `,
   },
   {
-    id: 'qualidade-resp', nome: 'Qualidade por responsável',
-    html: (ctx) => `
-      <div class="apresentacao-slide">
-        <div class="slide-titulo">Qualidade por responsável</div>
-        <div class="slide-subtitulo">Taxa de sucesso entre quem tem pelo menos 5 tarefas no ano</div>
-        <div class="apresentacao-duas-colunas">
-          <div>
-            <div class="slide-destaque" style="color:var(--green); font-size:88px;">${ctx.melhorTaxaResp ? ctx.melhorTaxaResp[1] + '%' : '—'}</div>
-            <div class="slide-destaque-legenda">${ctx.melhorTaxaResp ? `${ctx.melhorTaxaResp[0]} — maior taxa de sucesso (${ctx.melhorTaxaResp[2]} tarefas)` : 'Sem dado suficiente'}</div>
-          </div>
-          <div>
-            <div class="slide-destaque" style="color:var(--red); font-size:88px;">${ctx.piorTaxaResp ? ctx.piorTaxaResp[1] + '%' : '—'}</div>
-            <div class="slide-destaque-legenda">${ctx.piorTaxaResp ? `${ctx.piorTaxaResp[0]} — menor taxa de sucesso (${ctx.piorTaxaResp[2]} tarefas)` : 'Sem dado suficiente'}</div>
-          </div>
-        </div>
-        <div class="slide-insight" style="max-width:960px; margin-top:32px;">
-          <span class="icone">🎯</span>
-          <span>A taxa de sucesso média do escritório é <b>${ctx.taxaSucesso}%</b>. Comparar o desempenho individual ajuda a
-          identificar quem pode compartilhar boas práticas com o resto da equipe, e onde pode haver espaço para apoio extra.</span>
-        </div>
-      </div>
-    `,
-  },
-  {
     id: 'tipos', nome: 'Tarefas mais frequentes',
     html: (ctx) => `
       <div class="apresentacao-slide slide-com-texto">
@@ -2259,31 +2235,6 @@ const REGISTRO_SLIDES_APRESENTACAO = [
               <span>A maior parte do trabalho (<b>${ctx.totalCat ? Math.round((ctx.catCounts['Processual']||0)/ctx.totalCat*100) : 0}%</b>)
               está diretamente ligada a processos judiciais — o restante é atendimento administrativo ou sem vínculo direto com um processo.</span>
             </div>
-          </div>
-        </div>
-      </div>
-    `,
-  },
-  {
-    id: 'ciclo', nome: 'Tempo de resposta',
-    html: (ctx) => `
-      <div class="apresentacao-slide">
-        <div class="slide-titulo">Tempo de resposta</div>
-        <div class="apresentacao-duas-colunas">
-          <div>
-            <div class="slide-destaque" style="color:var(--teal); font-size:100px;">${INDICADORES.ciclo_medio_geral !== null ? INDICADORES.ciclo_medio_geral : '—'}</div>
-            <div class="slide-destaque-legenda">dias em média, da criação até a conclusão da tarefa</div>
-            ${ctx.maisRapido && ctx.maisLento ? `
-              <div class="slide-texto-explicativo" style="margin-top:22px; font-size:17px;">
-                Mais ágil: <b>${ctx.maisRapido[0]}</b> (${ctx.maisRapido[1]} dias)<br>
-                Mais lento: <b>${ctx.maisLento[0]}</b> (${ctx.maisLento[1]} dias)<br>
-                Diferença: <b>${Math.round(ctx.maisLento[1]-ctx.maisRapido[1])} dias</b>
-              </div>
-            ` : ''}
-          </div>
-          <div>
-            <div class="slide-destaque" style="color:var(--purple); font-size:100px;">${ctx.percPoloIdentificado}%</div>
-            <div class="slide-destaque-legenda">das tarefas têm o polo do processo identificado na planilha (${(ctx.poloAtivoN+ctx.poloPassivoN+ctx.poloMistoN).toLocaleString('pt-BR')} de ${ctx.poloTotal.toLocaleString('pt-BR')})</div>
           </div>
         </div>
       </div>
