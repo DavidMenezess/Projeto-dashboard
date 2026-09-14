@@ -31,7 +31,7 @@ from app.auth import (
     verificar_senha, gerar_hash_senha, criar_token_acesso,
     obter_usuario_autenticado, exigir_administrador, gerar_chave_login,
 )
-from app.data_processor import processar_tarefas, processar_processos_parados
+from app.data_processor import processar_tarefas, processar_processos_parados, processar_tarefas_periodo
 from app.cache import atualizar_cache, obter_cache, obter_ultima_sincronizacao
 
 # Log estruturado simples. Em produção, isso ajuda a auditar acessos
@@ -272,6 +272,38 @@ def obter_dados_tarefas(usuario: Usuario = Depends(obter_usuario_autenticado)):
     if dados is None:
         raise HTTPException(status_code=503, detail="Dados ainda não sincronizados. Tente novamente em instantes.")
     return dados
+
+
+@app.get("/api/tarefas/periodo", tags=["Dados"])
+def obter_dados_tarefas_periodo(
+    inicio: str,
+    fim: str,
+    usuario: Usuario = Depends(obter_usuario_autenticado),
+):
+    """
+    Mesma estrutura de 'produção' / 'tipos_tarefa' / 'indicadores' do
+    /api/tarefas, mas recortada por um período arbitrário (não só por ano
+    inteiro) — usado pelo filtro de período do modo Apresentação, para o
+    advogado mostrar só um intervalo específico (ex: 08/08 até 14/09).
+
+    'inicio' e 'fim' no formato AAAA-MM-DD (o mesmo que o input type="date"
+    do navegador já manda). Sempre lê a planilha do disco na hora (não usa o
+    cache de 10 em 10 minutos), então já reflete a última sincronização.
+    Requer login.
+    """
+    try:
+        data_inicio = datetime.strptime(inicio, "%Y-%m-%d")
+        data_fim = datetime.strptime(fim, "%Y-%m-%d")
+    except ValueError:
+        raise HTTPException(status_code=422, detail="As datas devem estar no formato AAAA-MM-DD.")
+
+    if data_fim < data_inicio:
+        raise HTTPException(status_code=422, detail="A data final não pode ser anterior à data inicial.")
+
+    try:
+        return processar_tarefas_periodo(settings.CAMINHO_PLANILHA_TAREFAS, data_inicio, data_fim)
+    except FileNotFoundError:
+        raise HTTPException(status_code=503, detail="Planilha de tarefas ainda não foi carregada no servidor.")
 
 
 @app.get("/api/processos-parados", tags=["Dados"])

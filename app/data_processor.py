@@ -163,6 +163,24 @@ def _categoriza_tarefa(modulo) -> str:
 # Planilha de TAREFAS
 # ---------------------------------------------------------------------------
 
+def _carregar_df_tarefas(caminho_arquivo: str) -> pd.DataFrame:
+    """
+    Lê a planilha de tarefas do disco e prepara as colunas usadas em todo o
+    resto do módulo (datas convertidas, categoria e ano). Extraído de
+    processar_tarefas() para poder ser reaproveitado por
+    processar_tarefas_periodo() (filtro de período arbitrário, usado pelo
+    modo Apresentação) sem duplicar a leitura/preparação da planilha.
+    """
+    df = pd.read_excel(caminho_arquivo, sheet_name="Tarefas", header=2)
+
+    for coluna in ["Data prevista", "Data fatal", "Data da conclusão", "Data de criação"]:
+        df[coluna + "_dt"] = pd.to_datetime(df[coluna], format="%d/%m/%Y", errors="coerce")
+
+    df["categoria"] = df["Módulo"].apply(_categoriza_tarefa)
+    df["ano"] = df["Data prevista_dt"].dt.year
+    return df
+
+
 def processar_tarefas(caminho_arquivo: str, data_referencia: datetime | None = None) -> dict:
     """
     Lê a planilha de tarefas e devolve:
@@ -172,16 +190,13 @@ def processar_tarefas(caminho_arquivo: str, data_referencia: datetime | None = N
       indicadores_por_ano   -> {"2026": {...ciclo, polo, área do direito, delegação...}, ...}
       pendencias            -> vencidas/a vencer, sempre o quadro atual (não muda por ano)
       detalhamento          -> lista de todas as tarefas, de todos os anos, com o campo "ano"
+      periodo_disponivel    -> {"min", "max"} (AAAA-MM-DD) com a menor e maior "Data prevista"
+                                de toda a planilha — usado pelo seletor de período do
+                                modo Apresentação para limitar as datas escolhíveis.
     """
     hoje = pd.Timestamp((data_referencia or datetime.now()).date())
 
-    df = pd.read_excel(caminho_arquivo, sheet_name="Tarefas", header=2)
-
-    for coluna in ["Data prevista", "Data fatal", "Data da conclusão", "Data de criação"]:
-        df[coluna + "_dt"] = pd.to_datetime(df[coluna], format="%d/%m/%Y", errors="coerce")
-
-    df["categoria"] = df["Módulo"].apply(_categoriza_tarefa)
-    df["ano"] = df["Data prevista_dt"].dt.year
+    df = _carregar_df_tarefas(caminho_arquivo)
 
     anos_disponiveis = sorted(int(a) for a in df["ano"].dropna().unique())
 
@@ -194,6 +209,12 @@ def processar_tarefas(caminho_arquivo: str, data_referencia: datetime | None = N
         tipos_tarefa_por_ano[str(ano)] = _tipos_tarefa(df_ano)
         indicadores_por_ano[str(ano)] = _indicadores_do_ano(df_ano)
 
+    datas_previstas_validas = df["Data prevista_dt"].dropna()
+    periodo_disponivel = {
+        "min": datas_previstas_validas.min().strftime("%Y-%m-%d") if len(datas_previstas_validas) else None,
+        "max": datas_previstas_validas.max().strftime("%Y-%m-%d") if len(datas_previstas_validas) else None,
+    }
+
     return {
         "atualizado_em": hoje.strftime("%d/%m/%Y"),
         "anos_disponiveis": anos_disponiveis,
@@ -202,6 +223,37 @@ def processar_tarefas(caminho_arquivo: str, data_referencia: datetime | None = N
         "indicadores_por_ano": indicadores_por_ano,
         "pendencias": _calcular_pendencias(df, hoje),
         "detalhamento": _detalhamento_tarefas(df),
+        "periodo_disponivel": periodo_disponivel,
+    }
+
+
+def processar_tarefas_periodo(caminho_arquivo: str, data_inicio: datetime, data_fim: datetime) -> dict:
+    """
+    Mesma lógica de produção/tipos de tarefa/indicadores de processar_tarefas,
+    mas recortada por um período arbitrário (data_inicio até data_fim,
+    inclusive) em vez de por ano inteiro — usado pelo filtro de período do
+    modo Apresentação, quando o advogado quer mostrar, por exemplo, só de
+    08/08 até 14/09. Compara pela "Data prevista", a mesma referência já
+    usada para agrupar por ano em processar_tarefas — mantém os dois modos
+    (ano inteiro x período customizado) consistentes entre si.
+    """
+    df = _carregar_df_tarefas(caminho_arquivo)
+
+    inicio = pd.Timestamp(data_inicio)
+    fim = pd.Timestamp(data_fim)
+    df_periodo = df[
+        df["Data prevista_dt"].notna()
+        & (df["Data prevista_dt"] >= inicio)
+        & (df["Data prevista_dt"] <= fim)
+    ]
+
+    return {
+        "inicio": inicio.strftime("%d/%m/%Y"),
+        "fim": fim.strftime("%d/%m/%Y"),
+        "total_no_periodo": int(len(df_periodo)),
+        "producao": _producao_do_ano(df_periodo),
+        "tipos_tarefa": _tipos_tarefa(df_periodo),
+        "indicadores": _indicadores_do_ano(df_periodo),
     }
 
 
