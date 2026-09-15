@@ -2174,6 +2174,23 @@ function construirContextoApresentacao() {
   const top3TipoSoma = tipoOrdenados.slice(0, 3).reduce((a, [, v]) => a + v, 0);
   const percTop3Tipo = totalTarefas ? Math.round((top3TipoSoma / totalTarefas) * 100) : 0;
 
+  // --- Mesma coisa, mas separado por categoria (Processual x Administrativa) —
+  // os percentuais são relativos ao total DAQUELA categoria, não do total geral,
+  // pra fazer sentido frases como "'Manifestação' é 15% das tarefas processuais".
+  const tipoOrdenadosProcessual = Object.entries(DATA.tipo_counts_processual || {});
+  const topTipoProcessual = tipoOrdenadosProcessual[0] || ['—', 0];
+  const totalTipoProcessual = tipoOrdenadosProcessual.reduce((a, [, v]) => a + v, 0);
+  const percTopTipoProcessual = totalTipoProcessual ? Math.round((topTipoProcessual[1] / totalTipoProcessual) * 100) : 0;
+  const top3TipoProcessualSoma = tipoOrdenadosProcessual.slice(0, 3).reduce((a, [, v]) => a + v, 0);
+  const percTop3TipoProcessual = totalTipoProcessual ? Math.round((top3TipoProcessualSoma / totalTipoProcessual) * 100) : 0;
+
+  const tipoOrdenadosAtendimento = Object.entries(DATA.tipo_counts_atendimento || {});
+  const topTipoAtendimento = tipoOrdenadosAtendimento[0] || ['—', 0];
+  const totalTipoAtendimento = tipoOrdenadosAtendimento.reduce((a, [, v]) => a + v, 0);
+  const percTopTipoAtendimento = totalTipoAtendimento ? Math.round((topTipoAtendimento[1] / totalTipoAtendimento) * 100) : 0;
+  const top3TipoAtendimentoSoma = tipoOrdenadosAtendimento.slice(0, 3).reduce((a, [, v]) => a + v, 0);
+  const percTop3TipoAtendimento = totalTipoAtendimento ? Math.round((top3TipoAtendimentoSoma / totalTipoAtendimento) * 100) : 0;
+
   const areaDireitoOrdenados = Object.entries(INDICADORES.area_direito_counts);
   const topArea = areaDireitoOrdenados[0] || ['—', 0];
   const totalAreaDireito = areaDireitoOrdenados.reduce((a, [, v]) => a + v, 0);
@@ -2256,6 +2273,8 @@ function construirContextoApresentacao() {
     numResponsaveis, mediaPorResponsavel, respOrdenados, respTop8, topResponsavel, percTopResponsavel, percTop3Resp,
     melhorTaxaResp, piorTaxaResp,
     tipoOrdenados, topTipo, percTopTipo, percTop3Tipo,
+    tipoOrdenadosProcessual, topTipoProcessual, percTopTipoProcessual, percTop3TipoProcessual,
+    tipoOrdenadosAtendimento, topTipoAtendimento, percTopTipoAtendimento, percTop3TipoAtendimento,
     areaDireitoOrdenados, topArea, percTopArea,
     catCounts, totalCat,
     mensalVisivel, melhorMes, piorMes, mesMaisPendentes, mediaMensal, tendencia, mensalComVariacao, variacaoMetades,
@@ -2401,15 +2420,15 @@ const REGISTRO_SLIDES_APRESENTACAO = [
     `,
   },
   {
-    id: 'tipos', nome: 'Tarefas mais frequentes',
+    id: 'tipos-processual', nome: 'Tarefas processuais mais frequentes',
     html: (ctx) => `
       <div class="apresentacao-slide slide-com-texto">
-        <div class="slide-titulo">Tarefas mais frequentes</div>
+        <div class="slide-titulo">Tarefas processuais mais frequentes</div>
         <div class="slide-corpo">
-          <div class="slide-col-grafico"><canvas id="apresChartTipo"></canvas></div>
+          <div class="slide-col-grafico"><canvas id="apresChartTipoProcessual"></canvas></div>
           <div class="slide-col-texto">
             <div class="slide-lista-numerica">
-              ${ctx.tipoOrdenados.slice(0, 8).map(([nome, valor]) => `
+              ${ctx.tipoOrdenadosProcessual.slice(0, 8).map(([nome, valor]) => `
                 <div class="item"><span class="nome">${nome}</span><span class="num">${valor.toLocaleString('pt-BR')}</span></div>
               `).join('')}
             </div>
@@ -2417,8 +2436,31 @@ const REGISTRO_SLIDES_APRESENTACAO = [
         </div>
         <div class="slide-insight" style="max-width:1100px; margin-top:20px;">
           <span class="icone">📋</span>
-          <span><b>"${ctx.topTipo[0]}"</b> é o tipo de tarefa mais comum (${ctx.topTipo[1].toLocaleString('pt-BR')}, <b>${ctx.percTopTipo}%</b> do total).
-          Os 3 tipos mais frequentes juntos somam <b>${ctx.percTop3Tipo}%</b> de toda a produção do ${periodoRotuloPalavra()}.</span>
+          <span><b>"${ctx.topTipoProcessual[0]}"</b> é o tipo de tarefa processual mais comum (${ctx.topTipoProcessual[1].toLocaleString('pt-BR')}, <b>${ctx.percTopTipoProcessual}%</b> das tarefas processuais).
+          Os 3 tipos mais frequentes juntos somam <b>${ctx.percTop3TipoProcessual}%</b> de toda a produção processual do ${periodoRotuloPalavra()}.</span>
+        </div>
+      </div>
+    `,
+  },
+  {
+    id: 'tipos-atendimento', nome: 'Tarefas administrativas mais frequentes',
+    html: (ctx) => `
+      <div class="apresentacao-slide slide-com-texto">
+        <div class="slide-titulo">Tarefas administrativas mais frequentes</div>
+        <div class="slide-corpo">
+          <div class="slide-col-grafico"><canvas id="apresChartTipoAtendimento"></canvas></div>
+          <div class="slide-col-texto">
+            <div class="slide-lista-numerica">
+              ${ctx.tipoOrdenadosAtendimento.slice(0, 8).map(([nome, valor]) => `
+                <div class="item"><span class="nome">${nome}</span><span class="num">${valor.toLocaleString('pt-BR')}</span></div>
+              `).join('')}
+            </div>
+          </div>
+        </div>
+        <div class="slide-insight" style="max-width:1100px; margin-top:20px;">
+          <span class="icone">📋</span>
+          <span><b>"${ctx.topTipoAtendimento[0]}"</b> é o tipo de tarefa administrativa mais comum (${ctx.topTipoAtendimento[1].toLocaleString('pt-BR')}, <b>${ctx.percTopTipoAtendimento}%</b> das tarefas administrativas).
+          Os 3 tipos mais frequentes juntos somam <b>${ctx.percTop3TipoAtendimento}%</b> de toda a produção administrativa do ${periodoRotuloPalavra()}.</span>
         </div>
       </div>
     `,
@@ -2680,6 +2722,32 @@ const INICIAR_GRAFICOS_APRESENTACAO = {
       },
     });
   },
+  'tipos-processual': (canvasId, ctx) => {
+    const top8 = ctx.tipoOrdenadosProcessual.slice(0, 8);
+    setBarHeight(canvasId, top8.length, 34, 260);
+    criarGrafico(canvasId, {
+      type: 'bar',
+      data: { labels: top8.map(t => t[0]), datasets: [{ data: top8.map(t => t[1]), backgroundColor: COLORS.accent, borderRadius: 8 }] },
+      options: {
+        indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: { x: { ticks: corTicksApres, grid: corGridApres }, y: { ticks: corTicksApres, grid: { display: false } } },
+      },
+    });
+  },
+  'tipos-atendimento': (canvasId, ctx) => {
+    const top8 = ctx.tipoOrdenadosAtendimento.slice(0, 8);
+    setBarHeight(canvasId, top8.length, 34, 260);
+    criarGrafico(canvasId, {
+      type: 'bar',
+      data: { labels: top8.map(t => t[0]), datasets: [{ data: top8.map(t => t[1]), backgroundColor: COLORS.teal, borderRadius: 8 }] },
+      options: {
+        indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: { x: { ticks: corTicksApres, grid: corGridApres }, y: { ticks: corTicksApres, grid: { display: false } } },
+      },
+    });
+  },
   categoria: (canvasId, ctx) => {
     criarGrafico(canvasId, {
       type: 'doughnut',
@@ -2720,7 +2788,9 @@ const INICIAR_GRAFICOS_APRESENTACAO = {
 const PALETA_GRAFICOS = [
   { id: 'evolucao', nome: 'Evolução mensal' },
   { id: 'responsaveis', nome: 'Tarefas por responsável' },
-  { id: 'tipos', nome: 'Tipos de tarefa' },
+  { id: 'tipos', nome: 'Tipos de tarefa (todos)' },
+  { id: 'tipos-processual', nome: 'Tipos de tarefa — Processuais' },
+  { id: 'tipos-atendimento', nome: 'Tipos de tarefa — Administrativas' },
   { id: 'categoria', nome: 'Processual x Administrativa' },
   { id: 'polo-geral', nome: 'Polo no processo (produção geral)' },
   { id: 'area', nome: 'Área do direito' },
@@ -2881,6 +2951,7 @@ function renderizarApresentacao() {
 
   const canvasPadrao = {
     evolucao: 'apresChartMensal', responsaveis: 'apresChartResp', tipos: 'apresChartTipo',
+    'tipos-processual': 'apresChartTipoProcessual', 'tipos-atendimento': 'apresChartTipoAtendimento',
     categoria: 'apresChartCategoria', 'polo-geral': 'apresChartPolo', area: 'apresChartArea', delegacao: 'apresChartDelegacao',
   };
   slidesParaExibir.forEach(s => {
