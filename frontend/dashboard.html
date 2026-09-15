@@ -24,6 +24,7 @@
 <script>
 // Variáveis globais com os dados vindos da API (preenchidas após o login)
 let DATA, STALLED, TASKTYPE, TASKLIST, INDICADORES;
+let categoriaTipoChartAtiva = 'processual';
 
 // ===== Navegação por abas (troca de painel, não rolagem) =====
 const mapaPaineis = {
@@ -114,6 +115,23 @@ function setBarHeight(canvasId, count, perItem, minH){
   const wrap = document.getElementById(canvasId + 'Wrap');
   const h = Math.max(minH, count * perItem + 20);
   if (wrap) wrap.style.height = h + 'px';
+}
+
+// Como setBarHeight, mas para listas que podem ficar MUITO grandes (ex: "Tipos
+// de tarefa", que não tem mais limite de Top N): o wrap INTERNO (id + 'Inner')
+// recebe a altura total de todas as barras, e o wrap EXTERNO (id + 'Wrap', que
+// tem overflow-y:auto no CSS) fica travado em "maxVisivel" itens — o resto
+// rola por dentro em vez de esticar a página inteira.
+function setBarHeightScroll(canvasId, count, perItem, minH, maxVisivel){
+  perItem = perItem || 30;
+  minH = minH || 220;
+  maxVisivel = maxVisivel || 13;
+  const outer = document.getElementById(canvasId + 'Wrap');
+  const inner = document.getElementById(canvasId + 'Inner');
+  const alturaTotal = Math.max(minH, count * perItem + 20);
+  const alturaVisivel = Math.min(alturaTotal, Math.max(minH, maxVisivel * perItem + 20));
+  if (inner) inner.style.height = alturaTotal + 'px';
+  if (outer) outer.style.height = alturaVisivel + 'px';
 }
 
 // Paleta cíclica usada quando uma lista de progresso não tem cor semântica própria
@@ -421,6 +439,20 @@ function renderizarComparativo() {
   canvas{max-height:280px;}
   .chart-wrap{position:relative; width:100%; max-height:none;}
   .chart-wrap canvas{max-height:none; width:100% !important;}
+  /* Como .chart-wrap, mas com altura fixa (definida via JS) e rolagem interna —
+     usado em listas que podem crescer muito (ex: "Tipos de tarefa", sem limite
+     de Top N) para não esticar a página inteira; o wrap interno tem a altura
+     TOTAL de todas as barras, o wrap externo só mostra uma "janela" dela. */
+  .chart-wrap-scroll{
+    position:relative; width:100%; overflow-y:auto; border:1px solid var(--border); border-radius:8px;
+    scrollbar-width:thin; scrollbar-color:var(--border) var(--panel-2);
+  }
+  .chart-wrap-scroll .chart-wrap-inner{position:relative; width:100%;}
+  .chart-wrap-scroll canvas{max-height:none; width:100% !important;}
+  .chart-wrap-scroll::-webkit-scrollbar{ width:10px; }
+  .chart-wrap-scroll::-webkit-scrollbar-track{ background:var(--panel-2); border-radius:0 8px 8px 0; }
+  .chart-wrap-scroll::-webkit-scrollbar-thumb{ background:var(--border); border-radius:6px; border:2px solid var(--panel-2); }
+  .chart-wrap-scroll::-webkit-scrollbar-thumb:hover{ background:var(--accent); }
 
   /* ===== Navegação sticky ===== */
   .navbar{
@@ -442,15 +474,6 @@ function renderizarComparativo() {
   @keyframes fadeInPanel{from{opacity:0;} to{opacity:1;}}
 
   /* ===== Resumo executivo ===== */
-  .summary-bar{
-    display:flex; gap:10px; flex-wrap:wrap; align-items:center;
-    background:linear-gradient(90deg, rgba(var(--gold-rgb),.08), transparent);
-    border:1px solid rgba(var(--gold-rgb),.2); border-radius:12px;
-    padding:14px 18px; margin-bottom:22px; font-size:13px; color:var(--text);
-  }
-  .summary-bar b{color:var(--accent);}
-  .summary-bar .sep{color:var(--border);}
-
   /* ===== Paginação ===== */
   .pagination{
     display:flex; align-items:center; justify-content:space-between;
@@ -503,11 +526,12 @@ function renderizarComparativo() {
     font-size:18px; color:var(--muted); margin-bottom:36px;
   }
   .apresentacao-kpi-grid{
-    display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));
-    gap:28px; width:100%; max-width:1300px;
+    display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr));
+    gap:22px; width:100%; max-width:1560px;
   }
   .apresentacao-kpi{
     background:var(--panel); border:1px solid var(--border); border-radius:18px; padding:32px 20px;
+    display:flex; flex-direction:column; justify-content:center; min-height:100%; box-sizing:border-box;
   }
   .apresentacao-kpi .valor{ font-size:76px; font-weight:800; line-height:1; margin-bottom:10px; font-variant-numeric:tabular-nums; }
   .apresentacao-kpi .rotulo{ font-size:17px; color:var(--muted); }
@@ -605,7 +629,7 @@ function renderizarComparativo() {
   .apresentacao-container:fullscreen .apresentacao-slide{ padding:40px 60px; }
   .apresentacao-container:fullscreen .slide-titulo{ font-size:50px; margin-bottom:8px; }
   .apresentacao-container:fullscreen .slide-subtitulo{ font-size:22px; margin-bottom:40px; }
-  .apresentacao-container:fullscreen .apresentacao-kpi-grid{ max-width:1450px; }
+  .apresentacao-container:fullscreen .apresentacao-kpi-grid{ max-width:1750px; }
   .apresentacao-container:fullscreen .apresentacao-kpi .valor{ font-size:92px; }
   .apresentacao-container:fullscreen .apresentacao-kpi .rotulo{ font-size:20px; }
   .apresentacao-container:fullscreen .slide-grafico-wrap{ max-width:1350px; max-height:560px; }
@@ -680,7 +704,6 @@ function renderizarComparativo() {
     .nav-link{padding:7px 11px; font-size:11.5px;}
     h1{font-size:19px;}
     .kpi-grid{grid-template-columns:repeat(auto-fit, minmax(130px,1fr));}
-    .summary-bar{font-size:11.5px; padding:11px 14px;}
     .login-box{max-width:92vw; padding:26px 20px;}
   }
 
@@ -836,7 +859,6 @@ function renderizarComparativo() {
   </div>
 </nav>
 
-<div class="summary-bar" id="summaryBar"></div>
 
 <div class="tab-panel" id="painel-producao">
 <div id="section-producao"></div>
@@ -894,7 +916,12 @@ function renderizarComparativo() {
   </div>
   <div class="card">
     <h2><span class="dot" style="background:var(--teal)"></span>Tipos de tarefa mais frequentes</h2>
-    <div class="chart-wrap" id="tipoChartWrap"><canvas id="tipoChart"></canvas></div>
+    <div class="tag-row" id="tipoCategoriaTabs">
+      <button class="tab-btn" data-cat="processual" type="button">Processuais</button>
+      <button class="tab-btn" data-cat="atendimento" type="button">Administrativas</button>
+      <button class="tab-btn" data-cat="outras" type="button">Outras</button>
+    </div>
+    <div class="chart-wrap-scroll" id="tipoChartWrap"><div class="chart-wrap-inner" id="tipoChartInner"><canvas id="tipoChart"></canvas></div></div>
   </div>
 </div>
 
@@ -1145,17 +1172,6 @@ document.getElementById('kpiGrid').innerHTML = kpis.map((k, i) => `
 `).join('');
 kpis.forEach((k, i) => animarContador(document.getElementById('kpiValor' + i), k.value));
 
-// ===== Resumo executivo =====
-const taxaSucesso = ((s['Concluída com sucesso']||0) / DATA.total * 100).toFixed(1);
-document.getElementById('summaryBar').innerHTML = `
-  <span>📅 <b>${anoSelecionado}</b></span>
-  <span class="sep">•</span>
-  <span><b>${DATA.total.toLocaleString('pt-BR')}</b> tarefas no ano, taxa de sucesso de <b>${taxaSucesso}%</b></span>
-  <span class="sep">•</span>
-  <span><b>${DATA.processos_distintos.toLocaleString('pt-BR')}</b> processos distintos acompanhados</span>
-  <span class="sep">•</span>
-  <span><b>${DATA.total_atrasadas}</b> tarefas com prazo fatal vencido em aberto</span>
-`;
 
 // ===== Monthly chart =====
 const mesesVisiveis = mesesComDados(DATA.monthly);
@@ -1224,23 +1240,45 @@ criarGrafico('respChart', {
   }
 });
 
-// ===== Tipo de tarefa =====
-const tipoLabels = Object.keys(DATA.tipo_counts);
-setBarHeight('tipoChart', tipoLabels.length);
-criarGrafico('tipoChart', {
-  type:'bar',
-  data:{
-    labels: tipoLabels,
-    datasets:[{data: tipoLabels.map(t=>DATA.tipo_counts[t]), backgroundColor:COLORS.teal, borderRadius:5}]
-  },
-  options:{
-    indexAxis:'y',
-    responsive:true,
-    maintainAspectRatio:false,
-    plugins:{legend:{display:false}},
-    scales:{x:{grid:{color:'#2b2c39'}}, y:{grid:{display:false}}}
-  }
+// ===== Tipo de tarefa (separado por categoria: Processual x Administrativa x Outras) =====
+// Sem limite de Top N (removido a pedido do cliente) a lista pode ter centenas
+// de tipos — em vez disso, o gráfico mostra uma "janela" de 13 itens com
+// rolagem interna (ver setBarHeightScroll), e abas dividem por categoria
+// (usando "categoria", já calculada a partir do Módulo).
+const MAPA_TIPO_COUNTS = {
+  processual: DATA.tipo_counts_processual || {},
+  atendimento: DATA.tipo_counts_atendimento || {},
+  outras: DATA.tipo_counts_outras || {},
+};
+function renderizarTipoChart(categoria) {
+  categoriaTipoChartAtiva = categoria;
+  document.querySelectorAll('#tipoCategoriaTabs .tab-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.cat === categoria);
+  });
+  const contagem = MAPA_TIPO_COUNTS[categoria] || {};
+  const tipoLabels = Object.keys(contagem);
+  setBarHeightScroll('tipoChart', tipoLabels.length, 30, 220, 13);
+  criarGrafico('tipoChart', {
+    type:'bar',
+    data:{
+      labels: tipoLabels,
+      datasets:[{data: tipoLabels.map(t=>contagem[t]), backgroundColor:COLORS.teal, borderRadius:5}]
+    },
+    options:{
+      indexAxis:'y',
+      responsive:true,
+      maintainAspectRatio:false,
+      plugins:{legend:{display:false}},
+      scales:{x:{grid:{color:'#2b2c39'}}, y:{grid:{display:false}}}
+    }
+  });
+}
+document.querySelectorAll('#tipoCategoriaTabs .tab-btn').forEach(btn => {
+  btn.onclick = () => renderizarTipoChart(btn.dataset.cat);
 });
+renderizarTipoChart(MAPA_TIPO_COUNTS[categoriaTipoChartAtiva] && Object.keys(MAPA_TIPO_COUNTS[categoriaTipoChartAtiva]).length
+  ? categoriaTipoChartAtiva
+  : 'processual');
 
 // ===== Situação do processo (lista de progresso) =====
 renderizarListaProgresso('sitProcLista', DATA.sitproc_counts);
@@ -2167,6 +2205,25 @@ function construirContextoApresentacao() {
   const maisRapido = cicloEntries.length ? cicloEntries.reduce((a, b) => (b[1] < a[1] ? b : a)) : null;
   const maisLento = cicloEntries.length ? cicloEntries.reduce((a, b) => (b[1] > a[1] ? b : a)) : null;
 
+  // --- Tempo médio para fazer uma Petição Inicial (busca por nome, ignorando acento/maiúscula) ---
+  // A planilha tem dois tipos de tarefa distintos que batem com "petição inicial":
+  // "Elaborar petição inicial" (a redação em si) e "Petição Inicial" (o tipo de tarefa
+  // genérico, que costuma cobrir um ciclo mais longo). O cliente pediu os dois separados.
+  const normalizarTexto = (s) => (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  const cicloTipoEntries = Object.entries(INDICADORES.ciclo_por_tipo_tarefa || {});
+  const matchesPeticaoInicial = cicloTipoEntries.filter(([nome]) => {
+    const n = normalizarTexto(nome);
+    return n.includes('peticao') && n.includes('inicial');
+  });
+  const elaborarPeticaoInicialEntry = matchesPeticaoInicial.find(([nome]) => normalizarTexto(nome).includes('elaborar'));
+  const peticaoInicialEntry = matchesPeticaoInicial.find(([nome]) => !normalizarTexto(nome).includes('elaborar'));
+  const cicloElaborarPeticaoInicial = elaborarPeticaoInicialEntry ? elaborarPeticaoInicialEntry[1] : null;
+  const cicloPeticaoInicial = peticaoInicialEntry ? peticaoInicialEntry[1] : null;
+
+  // --- Comparativo mês atual x mês anterior (últimos dois meses com dados no período/ano ativo) ---
+  const mesAtual = mensalVisivel.length ? mensalVisivel[mensalVisivel.length - 1] : null;
+  const mesAnterior = mensalVisivel.length > 1 ? mensalVisivel[mensalVisivel.length - 2] : null;
+
   const poloTotal = Object.values(INDICADORES.polo_counts).reduce((a, b) => a + b, 0);
   const poloAtivoN = INDICADORES.polo_counts['Polo Ativo (Autor)'] || 0;
   const poloPassivoN = INDICADORES.polo_counts['Polo Passivo (Réu)'] || 0;
@@ -2202,7 +2259,7 @@ function construirContextoApresentacao() {
     areaDireitoOrdenados, topArea, percTopArea,
     catCounts, totalCat,
     mensalVisivel, melhorMes, piorMes, mesMaisPendentes, mediaMensal, tendencia, mensalComVariacao, variacaoMetades,
-    maisRapido, maisLento,
+    maisRapido, maisLento, cicloPeticaoInicial, cicloElaborarPeticaoInicial, mesAtual, mesAnterior,
     poloTotal, poloAtivoN, poloPassivoN, poloMistoN, poloNaoIdN, percPoloAtivo, percPoloPassivo, percPoloIdentificado,
     totalDelegacao, percAutoatribuidas, criadorOrdenados, topCriador,
     totalRecentes, totalCronicos, totalParados, percCronico, recentesAtivo, cronicosAtivo, cronicosPassivo,
@@ -2240,6 +2297,8 @@ const REGISTRO_SLIDES_APRESENTACAO = [
           <div class="apresentacao-kpi"><div class="valor" style="color:var(--green)">${ctx.taxaSucesso}%</div><div class="rotulo">Taxa de sucesso</div></div>
           <div class="apresentacao-kpi"><div class="valor" style="color:var(--purple)">${DATA.processos_distintos.toLocaleString('pt-BR')}</div><div class="rotulo">Processos distintos</div></div>
           <div class="apresentacao-kpi"><div class="valor" style="color:var(--red)">${DATA.total_atrasadas.toLocaleString('pt-BR')}</div><div class="rotulo">Prazos vencidos em aberto</div></div>
+          <div class="apresentacao-kpi"><div class="valor" style="color:var(--teal)">${ctx.cicloElaborarPeticaoInicial !== null ? ctx.cicloElaborarPeticaoInicial.toLocaleString('pt-BR') + ' dias' : '—'}</div><div class="rotulo">Tempo médio p/ elaborar Petição Inicial</div></div>
+          <div class="apresentacao-kpi"><div class="valor" style="color:var(--teal)">${ctx.cicloPeticaoInicial !== null ? ctx.cicloPeticaoInicial.toLocaleString('pt-BR') + ' dias' : '—'}</div><div class="rotulo">Tempo médio (tarefa "Petição Inicial")</div></div>
         </div>
         <div class="slide-mini-kpis" style="margin-top:32px; justify-content:center;">
           <div class="mini-kpi"><div class="valor" style="color:var(--teal)">${DATA.clientes_distintos.toLocaleString('pt-BR')}</div><div class="rotulo">Clientes atendidos</div></div>
@@ -2490,6 +2549,60 @@ const REGISTRO_SLIDES_APRESENTACAO = [
     `,
   },
   {
+    id: 'comparativo-mensal', nome: 'Comparativo com o mês anterior',
+    html: (ctx) => {
+      if (!ctx.mesAtual || !ctx.mesAnterior) {
+        return `
+          <div class="apresentacao-slide">
+            <div class="slide-titulo">Comparativo com o mês anterior</div>
+            <div class="slide-subtitulo">Não há dois meses com dados no período selecionado para comparar.</div>
+          </div>
+        `;
+      }
+      const variacao = (atual, anterior) => anterior ? Math.round(((atual - anterior) / anterior) * 100) : null;
+      const fmtDelta = (v) => v === null
+        ? '<span style="color:var(--muted)">sem base</span>'
+        : `<span style="color:${v >= 0 ? 'var(--green)' : 'var(--red)'}">${v >= 0 ? '+' : ''}${v}%</span>`;
+      const deltaTotal = variacao(ctx.mesAtual.total, ctx.mesAnterior.total);
+      const deltaAud = variacao(ctx.mesAtual.audiencias, ctx.mesAnterior.audiencias);
+      const deltaAtend = variacao(ctx.mesAtual.atendimentos, ctx.mesAnterior.atendimentos);
+      return `
+        <div class="apresentacao-slide">
+          <div class="slide-titulo">Comparativo com o mês anterior</div>
+          <div class="slide-subtitulo">${ctx.mesAnterior.mes_nome} → ${ctx.mesAtual.mes_nome}</div>
+          <div class="apresentacao-duas-colunas" style="margin-top:26px; max-width:900px;">
+            <div>
+              <div style="font-size:18px; color:var(--muted); margin-bottom:14px; text-align:center;">${ctx.mesAnterior.mes_nome}</div>
+              <div class="slide-lista-numerica">
+                <div class="item"><span class="nome">Tarefas</span><span class="num">${ctx.mesAnterior.total.toLocaleString('pt-BR')}</span></div>
+                <div class="item"><span class="nome">Audiências</span><span class="num">${ctx.mesAnterior.audiencias.toLocaleString('pt-BR')}</span></div>
+                <div class="item"><span class="nome">Atendimentos</span><span class="num">${ctx.mesAnterior.atendimentos.toLocaleString('pt-BR')}</span></div>
+              </div>
+            </div>
+            <div>
+              <div style="font-size:18px; color:var(--text); margin-bottom:14px; text-align:center; font-weight:700;">${ctx.mesAtual.mes_nome}</div>
+              <div class="slide-lista-numerica">
+                <div class="item"><span class="nome">Tarefas</span><span class="num">${ctx.mesAtual.total.toLocaleString('pt-BR')} ${fmtDelta(deltaTotal)}</span></div>
+                <div class="item"><span class="nome">Audiências</span><span class="num">${ctx.mesAtual.audiencias.toLocaleString('pt-BR')} ${fmtDelta(deltaAud)}</span></div>
+                <div class="item"><span class="nome">Atendimentos</span><span class="num">${ctx.mesAtual.atendimentos.toLocaleString('pt-BR')} ${fmtDelta(deltaAtend)}</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="slide-insight" style="max-width:900px; margin-top:28px;">
+            <span class="icone">💡</span>
+            <span>Em ${ctx.mesAnterior.mes_nome} foram <b>${ctx.mesAnterior.total.toLocaleString('pt-BR')} tarefas</b>,
+            sendo <b>${ctx.mesAnterior.audiencias.toLocaleString('pt-BR')} audiências</b> e
+            <b>${ctx.mesAnterior.atendimentos.toLocaleString('pt-BR')} atendimentos</b>.
+            Em ${ctx.mesAtual.mes_nome} foram <b>${ctx.mesAtual.total.toLocaleString('pt-BR')} tarefas</b>
+            (${fmtDelta(deltaTotal)}), <b>${ctx.mesAtual.audiencias.toLocaleString('pt-BR')} audiências</b>
+            (${fmtDelta(deltaAud)}) e <b>${ctx.mesAtual.atendimentos.toLocaleString('pt-BR')} atendimentos</b>
+            (${fmtDelta(deltaAtend)}).</span>
+          </div>
+        </div>
+      `;
+    },
+  },
+  {
     id: 'resumo', nome: 'Resumo do ano',
     html: (ctx) => `
       <div class="apresentacao-slide">
@@ -2633,6 +2746,8 @@ function obterCamposNumericosDisponiveis(ctx) {
     { id: 'mediaPorResponsavel', rotulo: 'Média de tarefas por pessoa', valor: ctx.mediaPorResponsavel },
     { id: 'totalAtrasadas', rotulo: 'Prazos vencidos em aberto', valor: DATA.total_atrasadas },
     { id: 'cicloMedio', rotulo: 'Tempo médio de ciclo (dias)', valor: INDICADORES.ciclo_medio_geral },
+    { id: 'cicloElaborarPeticaoInicial', rotulo: 'Tempo médio p/ elaborar Petição Inicial (dias)', valor: ctx.cicloElaborarPeticaoInicial },
+    { id: 'cicloPeticaoInicial', rotulo: 'Tempo médio (tarefa "Petição Inicial") (dias)', valor: ctx.cicloPeticaoInicial },
     { id: 'topResponsavelNome', rotulo: 'Nome de quem mais produziu', valor: ctx.topResponsavel[0] },
     { id: 'topResponsavelValor', rotulo: 'Qtd. de tarefas de quem mais produziu', valor: ctx.topResponsavel[1] },
     { id: 'topAreaNome', rotulo: 'Área do direito líder', valor: ctx.topArea[0] },

@@ -265,12 +265,23 @@ def _producao_do_ano(df: pd.DataFrame) -> dict:
     # terminado (ex: ano corrente) ou que algum mês não tenha nenhuma tarefa.
     df = df.copy()
     df["mes_num"] = df["Data prevista_dt"].dt.month
+    df["_is_audiencia"] = df["Tipo de tarefa"].astype(str).str.contains("audi", case=False, na=False)
+    df["_is_atendimento"] = df["categoria"] == "Atendimento/Administrativa"
     mensal = df.groupby("mes_num").agg(
         total=("Identificador da tarefa", "count"),
         concluidas=("Situação", lambda s: (s == "Concluída com sucesso").sum()),
         pendentes=("Situação", lambda s: s.isin(["Pendente", "Em execução"]).sum()),
         canceladas=("Situação", lambda s: (s == "Cancelado").sum()),
+        audiencias=("_is_audiencia", "sum"),
+        atendimentos=("_is_atendimento", "sum"),
     )
+    # Força tipo numérico antes do reindex: quando o período filtrado não tem
+    # NENHUMA tarefa (ex: um intervalo de datas sem dados), o groupby fica
+    # vazio e o pandas às vezes infere as colunas somadas via lambda como
+    # texto em vez de número — aí o reindex com fill_value=0 quebra
+    # ("Invalid value '0' for dtype 'str'"). Forçar int64 aqui evita o erro
+    # nesse caso raro, sem mudar nada no caso normal (com dados).
+    mensal = mensal.astype({coluna: "int64" for coluna in mensal.columns})
     mensal = mensal.reindex(range(1, 13), fill_value=0)
     mensal["mes_nome"] = [MESES_NOME[m] for m in mensal.index]
 
@@ -289,7 +300,14 @@ def _producao_do_ano(df: pd.DataFrame) -> dict:
             "total": int(len(subconjunto)),
         }
 
-    tipo_counts = df["Tipo de tarefa"].value_counts().head(10).to_dict()
+    tipo_counts = df["Tipo de tarefa"].value_counts().to_dict()
+    # Mesma contagem de tipo_counts, mas separada por categoria (Processual x
+    # Atendimento/Administrativa x Outras) — usada no dashboard para dividir a
+    # lista de "tipos de tarefa mais frequentes" em abas, em vez de uma lista
+    # única gigante quando não há mais limite de Top N.
+    tipo_counts_processual = df[df["categoria"] == "Processual"]["Tipo de tarefa"].value_counts().to_dict()
+    tipo_counts_atendimento = df[df["categoria"] == "Atendimento/Administrativa"]["Tipo de tarefa"].value_counts().to_dict()
+    tipo_counts_outras = df[df["categoria"] == "Outras (sem vínculo)"]["Tipo de tarefa"].value_counts().to_dict()
     modulo_counts = df["Módulo"].value_counts().to_dict()
     sitproc_counts = df["Situação do processo"].value_counts().to_dict()
 
@@ -308,10 +326,13 @@ def _producao_do_ano(df: pd.DataFrame) -> dict:
     return {
         "total": int(len(df)),
         "situacao_counts": {k: int(v) for k, v in situacao_counts.items()},
-        "monthly": mensal[["mes_nome", "total", "concluidas", "pendentes", "canceladas"]].to_dict("records"),
+        "monthly": mensal[["mes_nome", "total", "concluidas", "pendentes", "canceladas", "audiencias", "atendimentos"]].to_dict("records"),
         "resp_counts": {k: int(v) for k, v in resp_counts.items()},
         "resp_situacao": resp_situacao,
         "tipo_counts": {k: int(v) for k, v in tipo_counts.items()},
+        "tipo_counts_processual": {k: int(v) for k, v in tipo_counts_processual.items()},
+        "tipo_counts_atendimento": {k: int(v) for k, v in tipo_counts_atendimento.items()},
+        "tipo_counts_outras": {k: int(v) for k, v in tipo_counts_outras.items()},
         "modulo_counts": {k: int(v) for k, v in modulo_counts.items()},
         "sitproc_counts": {k: int(v) for k, v in sitproc_counts.items()},
         "grupo_counts": {k: int(v) for k, v in grupo_counts.items()},
@@ -409,6 +430,16 @@ def _indicadores_do_ano(df: pd.DataFrame) -> dict:
     # Mantém só os 10 com mais tarefas concluídas consideradas, pra não poluir o gráfico
     ciclo_por_responsavel = dict(sorted(ciclo_por_responsavel.items(), key=lambda kv: kv[1])[:15])
 
+    # --- Tempo de ciclo por tipo de tarefa (ex: "Petição Inicial") ---
+    ciclo_por_tipo_tarefa = {}
+    if len(concluidas):
+        tipos_ciclo = concluidas["Tipo de tarefa"].dropna().astype(str).str.strip().unique()
+        for tipo in tipos_ciclo:
+            filtro = concluidas["Tipo de tarefa"].astype(str).str.strip() == tipo
+            media = concluidas.loc[filtro, "dias_ciclo"].mean()
+            if pd.notna(media):
+                ciclo_por_tipo_tarefa[tipo] = round(float(media), 1)
+
     # --- Polo no processo (autor x réu) na produção geral ---
     tem_cliente_ativo = df["Envolvidos do processo (partes ativas)"].apply(_lado_tem_cliente)
     tem_cliente_passivo = df["Envolvidos do processo (partes passivas)"].apply(_lado_tem_cliente)
@@ -440,6 +471,7 @@ def _indicadores_do_ano(df: pd.DataFrame) -> dict:
     return {
         "ciclo_medio_geral": round(ciclo_medio_geral, 1) if ciclo_medio_geral is not None else None,
         "ciclo_por_responsavel": ciclo_por_responsavel,
+        "ciclo_por_tipo_tarefa": ciclo_por_tipo_tarefa,
         "polo_counts": {k: int(v) for k, v in polo_counts.items()},
         "area_direito_counts": {k: int(v) for k, v in area_direito_counts.items()},
         "criador_counts": {k: int(v) for k, v in criador_counts.items()},
