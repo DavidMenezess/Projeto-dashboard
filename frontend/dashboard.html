@@ -2129,13 +2129,10 @@ function renderizarProcessos() {
   // "qtd_valores_suspeitos" avisa quando isso aconteceu, pra não sumir em silêncio.
   const poloAtivoN = dados.polo_counts['Polo Ativo (Autor)'] || 0;
   const percPoloAtivoProcessos = dados.total ? Math.round((poloAtivoN / dados.total) * 100) : 0;
-  const rotuloValorCausa = 'Valor total da causa'
-    + (dados.qtd_valores_suspeitos ? ` ⚠️ (${dados.qtd_valores_suspeitos} valor${dados.qtd_valores_suspeitos > 1 ? 'es' : ''} ignorado${dados.qtd_valores_suspeitos > 1 ? 's' : ''} por parecer erro de digitação)` : '');
 
   const kpisProcessos = [
     { label: 'Total de processos', value: dados.total, cls: 'accent' },
     { label: 'Ativos', value: totalAtivos, cls: 'green' },
-    { label: rotuloValorCausa, valorFormatado: fmtMoedaProcessos(dados.valor_total_causa), cls: 'purple' },
     { label: 'Em polo ativo (Autor)', valorFormatado: percPoloAtivoProcessos + '%', cls: 'red' },
   ];
   document.getElementById('kpiGridProcessos').innerHTML = kpisProcessos.map((k, i) => `
@@ -2219,7 +2216,7 @@ function renderizarProcessos() {
         <td>${p.area || '—'}</td>
         <td>${[p.estado, p.cidade].filter(Boolean).join(' / ') || '—'}</td>
         <td>${p.data_distribuicao || '—'}</td>
-        <td>${p.valor_causa_suspeito ? `<span title="Valor fora do padrão — parece erro de digitação no Projuris, e por isso não entra no KPI &quot;Valor total da causa&quot;." style="color:var(--red); cursor:help;">⚠️ ${fmtMoedaProcessos(p.valor_causa)}</span>` : fmtMoedaProcessos(p.valor_causa)}</td>
+        <td>${p.valor_causa_suspeito ? `<span title="Valor fora do padrão — parece erro de digitação no Projuris." style="color:var(--red); cursor:help;">⚠️ ${fmtMoedaProcessos(p.valor_causa)}</span>` : fmtMoedaProcessos(p.valor_causa)}</td>
         <td>${p.data_ultimo_andamento || '—'}</td>
       </tr>
     `;
@@ -2311,7 +2308,13 @@ function renderizarMapaProcessos() {
     const nomeSvg = a.getAttribute('name');
     const info = lookupEstado[normalizarNomeEstadoMapa(nomeSvg)];
     const valor = info ? info.valor : 0;
-    const cor = corMapaProcessos(valor / maxValor);
+    // Destaque por presença, não por volume: o Maranhão sozinho concentra a
+    // maior parte dos processos, então numa escala proporcional ele "puxa" o
+    // degradê pra si e todo o resto do mapa fica com a mesma cor de quem não
+    // tem nenhum processo. Em vez disso, qualquer estado com processo (mesmo
+    // que só 1) recebe a cor cheia de destaque — só fica no tom neutro quem
+    // realmente não tem nenhum processo.
+    const cor = corMapaProcessos(valor > 0 ? 1 : 0);
     a.querySelectorAll('path').forEach(p => { p.style.fill = cor; });
     a.classList.toggle('selecionado', !!estadoSelecionadoMapaProcessos && normalizarNomeEstadoMapa(estadoSelecionadoMapaProcessos) === normalizarNomeEstadoMapa(nomeSvg));
 
