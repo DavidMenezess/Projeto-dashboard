@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     # --- Arquivos de dados (planilhas) ---
     CAMINHO_PLANILHA_TAREFAS: str = "./data/tarefas.xlsx"
     CAMINHO_PLANILHA_PROCESSOS_PARADOS: str = "./data/processos_parados.xlsx"
+    CAMINHO_PLANILHA_PROCESSOS: str = "./data/processos.xlsx"
 
     # --- CORS ---
     ORIGENS_PERMITIDAS: str = "http://localhost:3000"

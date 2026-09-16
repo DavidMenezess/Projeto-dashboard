@@ -53,6 +53,16 @@ PAPEIS_POLO_PASSIVO = {
 MESES_NOME = {1: "Jan", 2: "Fev", 3: "Mar", 4: "Abr", 5: "Mai", 6: "Jun",
               7: "Jul", 8: "Ago", 9: "Set", 10: "Out", 11: "Nov", 12: "Dez"}
 
+# Trava de sanidade para "Valor ação" (valor da causa) na planilha de
+# Processos: já apareceu um valor de R$ 41 quatrilhões numa exportação real
+# (claramente um erro de digitação/exportação lá no Projuris — o maior valor
+# "de verdade" na mesma planilha era ~R$ 108 milhões). Qualquer valor acima
+# deste limite é tratado como erro de digitação: continua aparecendo no
+# registro do processo (pra dar pra achar e corrigir na fonte), mas é
+# excluído do TOTAL somado, pra um erro de digitação não inflar o KPI a
+# ponto de ficar sem sentido nenhum pro cliente.
+LIMITE_SANIDADE_VALOR_CAUSA = 1_000_000_000  # R$ 1 bilhão
+
 
 def _extrai_papeis(texto) -> list[str]:
     """Extrai os papéis entre parênteses: 'Fulano (Autor), Beltrano (Autor)' -> ['autor', 'autor']."""
@@ -506,6 +516,26 @@ def _detalhamento_tarefas(df: pd.DataFrame) -> list[dict]:
 # Planilha de PROCESSOS PARADOS
 # ---------------------------------------------------------------------------
 
+def _localizar_linha_cabecalho_parados(caminho_arquivo: str, max_linhas: int = 40) -> int:
+    """
+    Acha em qual linha (0-indexed) está o cabeçalho de verdade da planilha de
+    processos parados. Antes isso era fixo em "header=18", mas o número de
+    linhas de metadados que o Projuris coloca no topo do arquivo ("Filtros
+    utilizados:", "Data início:", etc.) pode variar de uma exportação para
+    outra dependendo dos filtros usados — já aconteceu de uma exportação vir
+    com uma linha a mais e quebrar a leitura. Em vez de travar num número de
+    linha fixo, procuramos a primeira linha que contém "Situação processo"
+    (uma coluna que sempre existe nesse relatório).
+    """
+    bruto = pd.read_excel(caminho_arquivo, header=None, nrows=max_linhas)
+    for i in range(len(bruto)):
+        if "Situação processo" in bruto.iloc[i].astype(str).values:
+            return i
+    # Não achou (formato mudou mais do que isso cobre) — mantém o
+    # comportamento antigo como último recurso, em vez de travar aqui.
+    return 18
+
+
 def processar_processos_parados(caminho_arquivo: str, data_referencia: datetime | None = None) -> dict:
     """
     Lê a planilha "processos parados" exportada do Projuris e devolve os
@@ -520,7 +550,8 @@ def processar_processos_parados(caminho_arquivo: str, data_referencia: datetime 
     """
     hoje = pd.Timestamp((data_referencia or datetime.now()).date())
 
-    df = pd.read_excel(caminho_arquivo, header=18)
+    linha_cabecalho = _localizar_linha_cabecalho_parados(caminho_arquivo)
+    df = pd.read_excel(caminho_arquivo, header=linha_cabecalho)
     df = df[df["Situação processo"] != "Usuário emissor:"].copy()
 
     df["data_mov_dt"] = pd.to_datetime(df["Data último movimento"], errors="coerce")
@@ -587,5 +618,99 @@ def _construir_bloco_parados(df: pd.DataFrame) -> dict:
         "polo_counts": {k: int(v) for k, v in df["polo"].value_counts().to_dict().items()},
         "idade_media_anos": idade_media_anos,
         "idade_cobertura_pct": idade_cobertura_pct,
+        "lista": lista,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Planilha de PROCESSOS (cadastro geral — um por processo, não por tarefa)
+# ---------------------------------------------------------------------------
+
+def _localizar_linha_cabecalho_processos(caminho_arquivo: str, max_linhas: int = 40) -> int:
+    """
+    Mesma ideia de _localizar_linha_cabecalho_parados: essa planilha também
+    vem com linhas de metadados do Projuris no topo ("Filtros utilizados:",
+    "Data início:" etc.) antes do cabeçalho de verdade, e o número de linhas
+    pode variar de uma exportação para outra. Procuramos a primeira linha que
+    contém "Identificador" (o código do processo, ex: "PRO.0000001"), que
+    sempre existe nesse relatório.
+    """
+    bruto = pd.read_excel(caminho_arquivo, sheet_name="Processos", header=None, nrows=max_linhas)
+    for i in range(len(bruto)):
+        if "Identificador" in bruto.iloc[i].astype(str).values:
+            return i
+    # Não achou (formato mudou mais do que isso cobre) — mesmo valor observado
+    # na primeira exportação, como último recurso, em vez de travar aqui.
+    return 2
+
+
+def processar_processos(caminho_arquivo: str) -> dict:
+    """
+    Lê a planilha "Processos" exportada do Projuris (aba "Processos" — a aba
+    "Filtros" só documenta os filtros usados na exportação, não tem dado
+    nenhum) e devolve o cadastro de cada processo com os campos pedidos pelo
+    cliente: assunto, situação, justiça (Federal/Estadual/Trabalhista/etc.),
+    instância, área do direito, data de distribuição, valor da causa, data
+    do último andamento, cliente(s) do escritório naquele processo, o polo
+    em que atuamos (autor x réu) e o estado/cidade do processo.
+
+    Diferente da planilha de Tarefas, aqui cada LINHA já é um processo (não
+    uma tarefa) — não precisa nenhuma agregação por "Número do processo".
+
+    O polo é calculado a partir da coluna "Cliente", que já vem só com o(s)
+    envolvido(s) que o escritório representa, com o papel entre parênteses
+    (ex: "Fulano (Autor)", "Empresa X (Executado)") — mesmo formato usado na
+    coluna "Envolvidos cliente" da planilha de Processos Parados, por isso a
+    reutilização de _extrai_papeis/_classifica_polo.
+    """
+    linha_cabecalho = _localizar_linha_cabecalho_processos(caminho_arquivo)
+    df = pd.read_excel(caminho_arquivo, sheet_name="Processos", header=linha_cabecalho)
+    df = df[df["Identificador"].notna()].copy()
+
+    df["papeis"] = df["Cliente"].apply(_extrai_papeis)
+    df["polo"] = df["papeis"].apply(_classifica_polo)
+
+    lista = []
+    valor_total_causa = 0.0
+    qtd_valores_suspeitos = 0
+    for _, row in df.iterrows():
+        data_distribuicao = row["Data distribuição"]
+        valor_causa = float(row["Valor ação"]) if pd.notna(row["Valor ação"]) else None
+        valor_suspeito = valor_causa is not None and valor_causa > LIMITE_SANIDADE_VALOR_CAUSA
+        if valor_suspeito:
+            qtd_valores_suspeitos += 1
+        elif valor_causa is not None:
+            valor_total_causa += valor_causa
+
+        lista.append({
+            "identificador": _texto_seguro(row["Identificador"]),
+            "assunto": _texto_seguro(row["Assunto"], tamanho_max=160),
+            "situacao": _texto_seguro(row["Situação"]),
+            "justica": _texto_seguro(row["Justiça"]),
+            "instancia": _texto_seguro(row["Instância"]),
+            "area": _texto_seguro(row["Área"]),
+            "data_distribuicao": data_distribuicao.strftime("%d/%m/%Y") if pd.notna(data_distribuicao) else None,
+            "valor_causa": valor_causa,
+            "valor_causa_suspeito": valor_suspeito,
+            "data_ultimo_andamento": _texto_seguro(row["Data dos últimos andamentos"]),
+            "cliente": _texto_seguro(row["Cliente"], tamanho_max=160),
+            "polo": row["polo"],
+            "estado": _texto_seguro(row["Estado"]),
+            "cidade": _texto_seguro(row["Cidade"]),
+        })
+
+    return {
+        "total": int(len(df)),
+        "situacao_counts": {k: int(v) for k, v in df["Situação"].fillna("Não informado").value_counts().to_dict().items()},
+        "justica_counts": {k: int(v) for k, v in df["Justiça"].fillna("Não informado").value_counts().to_dict().items()},
+        "instancia_counts": {k: int(v) for k, v in df["Instância"].fillna("Não informado").value_counts().to_dict().items()},
+        "area_counts": {k: int(v) for k, v in df["Área"].fillna("Não informado").value_counts().to_dict().items()},
+        "estado_counts": {k: int(v) for k, v in df["Estado"].fillna("Não informado").value_counts().to_dict().items()},
+        "polo_counts": {k: int(v) for k, v in df["polo"].value_counts().to_dict().items()},
+        # Soma já excluindo valores acima de LIMITE_SANIDADE_VALOR_CAUSA (ver
+        # comentário na constante) — "qtd_valores_suspeitos" avisa quando algum
+        # processo foi deixado de fora dessa soma, pra não sumir em silêncio.
+        "valor_total_causa": round(valor_total_causa, 2),
+        "qtd_valores_suspeitos": qtd_valores_suspeitos,
         "lista": lista,
     }

@@ -22,6 +22,7 @@ _trava = Lock()
 _cache: dict = {
     "tarefas": None,
     "processos_parados": None,
+    "processos": None,
     "ultima_sincronizacao": None,
 }
 

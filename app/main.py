@@ -9,6 +9,7 @@ Ponto de entrada da API. Define as rotas:
   POST /usuarios                -> cria um novo usuário (só admin)
   GET  /api/tarefas             -> dados da seção "Produção 2026" (protegida)
   GET  /api/processos-parados   -> dados da seção "Processos Parados" (protegida)
+  GET  /api/processos           -> cadastro geral de processos (protegida)
   GET  /health                  -> checagem simples de saúde do serviço
 
 Rodar localmente:
@@ -31,7 +32,9 @@ from app.auth import (
     verificar_senha, gerar_hash_senha, criar_token_acesso,
     obter_usuario_autenticado, exigir_administrador, gerar_chave_login,
 )
-from app.data_processor import processar_tarefas, processar_processos_parados, processar_tarefas_periodo
+from app.data_processor import (
+    processar_tarefas, processar_processos_parados, processar_tarefas_periodo, processar_processos,
+)
 from app.cache import atualizar_cache, obter_cache, obter_ultima_sincronizacao
 
 # Log estruturado simples. Em produção, isso ajuda a auditar acessos
@@ -108,11 +111,18 @@ def _sincronizar_dados_locais():
         logger.warning("Planilha de tarefas não encontrada em %s — aguardando arquivo.", settings.CAMINHO_PLANILHA_TAREFAS)
 
     try:
-        dados_processos = processar_processos_parados(settings.CAMINHO_PLANILHA_PROCESSOS_PARADOS, data_referencia=data_ref)
-        atualizar_cache("processos_parados", dados_processos)
+        dados_processos_parados = processar_processos_parados(settings.CAMINHO_PLANILHA_PROCESSOS_PARADOS, data_referencia=data_ref)
+        atualizar_cache("processos_parados", dados_processos_parados)
         logger.info("Planilha de processos parados processada com sucesso.")
     except FileNotFoundError:
         logger.warning("Planilha de processos parados não encontrada em %s — aguardando arquivo.", settings.CAMINHO_PLANILHA_PROCESSOS_PARADOS)
+
+    try:
+        dados_processos = processar_processos(settings.CAMINHO_PLANILHA_PROCESSOS)
+        atualizar_cache("processos", dados_processos)
+        logger.info("Planilha de processos processada com sucesso.")
+    except FileNotFoundError:
+        logger.warning("Planilha de processos não encontrada em %s — aguardando arquivo.", settings.CAMINHO_PLANILHA_PROCESSOS)
 
 
 @app.get("/health", tags=["Infraestrutura"])
@@ -310,6 +320,20 @@ def obter_dados_tarefas_periodo(
 def obter_dados_processos_parados(usuario: Usuario = Depends(obter_usuario_autenticado)):
     """Dados da seção 'Processos Parados' do dashboard. Requer login."""
     dados = obter_cache("processos_parados")
+    if dados is None:
+        raise HTTPException(status_code=503, detail="Dados ainda não sincronizados. Tente novamente em instantes.")
+    return dados
+
+
+@app.get("/api/processos", tags=["Dados"])
+def obter_dados_processos(usuario: Usuario = Depends(obter_usuario_autenticado)):
+    """
+    Cadastro geral de processos (planilha "Processos" do Projuris) — um
+    registro por processo, com assunto, situação, justiça, instância, área,
+    data de distribuição, valor da causa, data do último andamento,
+    cliente(s), polo (autor x réu) e estado/cidade. Requer login.
+    """
+    dados = obter_cache("processos")
     if dados is None:
         raise HTTPException(status_code=503, detail="Dados ainda não sincronizados. Tente novamente em instantes.")
     return dados

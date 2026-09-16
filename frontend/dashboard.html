@@ -23,7 +23,7 @@
 </script>
 <script>
 // Variáveis globais com os dados vindos da API (preenchidas após o login)
-let DATA, STALLED, TASKTYPE, TASKLIST, INDICADORES;
+let DATA, STALLED, TASKTYPE, TASKLIST, INDICADORES, PROCESSOS;
 let categoriaTipoChartAtiva = 'processual';
 
 // ===== Navegação por abas (troca de painel, não rolagem) =====
@@ -32,6 +32,7 @@ const mapaPaineis = {
   'section-tipo': 'painel-tipo',
   'section-indicadores': 'painel-indicadores',
   'section-parados': 'painel-parados',
+  'section-processos': 'painel-processos',
   'section-apresentacao': 'painel-apresentacao',
   'section-usuarios': 'painel-usuarios',
 };
@@ -454,6 +455,30 @@ function renderizarComparativo() {
   .chart-wrap-scroll::-webkit-scrollbar-thumb{ background:var(--border); border-radius:6px; border:2px solid var(--panel-2); }
   .chart-wrap-scroll::-webkit-scrollbar-thumb:hover{ background:var(--accent); }
 
+  /* ===== Mapa do Brasil (aba Processos) — colorido por quantidade de
+     processos por estado, com tooltip ao passar o mouse e clique pra ver
+     as cidades daquele estado no gráfico ao lado. ===== */
+  .mapa-processos-layout{ display:flex; gap:28px; align-items:flex-start; flex-wrap:wrap; }
+  .mapa-brasil-wrap{ flex:1 1 380px; max-width:460px; margin:0 auto; }
+  .mapa-brasil-wrap svg{ width:100%; height:auto; display:block; }
+  .mapa-processos-cidades{ flex:1 1 380px; min-width:0; }
+  #mapaBrasilProcessos a.estado{ cursor:pointer; }
+  #mapaBrasilProcessos a.estado path{
+    stroke:#15161e; stroke-width:1.2; transition:fill .15s ease, stroke .15s ease, stroke-width .15s ease;
+  }
+  #mapaBrasilProcessos a.estado:hover path{ stroke:#fff; stroke-width:2; }
+  #mapaBrasilProcessos a.estado.selecionado path{ stroke:var(--accent); stroke-width:2.4; }
+  #mapaBrasilProcessos text{
+    fill:#fff; font-weight:700; font-size:11px; pointer-events:none;
+    paint-order:stroke fill; stroke:rgba(0,0,0,.6); stroke-width:2.2px; stroke-linejoin:round;
+  }
+  .mapa-tooltip{
+    position:fixed; z-index:80; display:none; background:var(--panel);
+    border:1px solid var(--border); border-radius:8px; padding:8px 12px;
+    font-size:13px; color:var(--text); pointer-events:none; box-shadow:0 8px 24px -8px rgba(0,0,0,.5);
+  }
+  .mapa-tooltip b{ color:var(--accent); }
+
   /* ===== Navegação sticky ===== */
   .navbar{
     position:sticky; top:0; z-index:50;
@@ -540,6 +565,20 @@ function renderizarComparativo() {
   .apresentacao-slide .slide-destaque-legenda{ font-size:24px; color:var(--muted); margin-top:18px; }
   .apresentacao-duas-colunas{ display:flex; gap:60px; align-items:center; justify-content:center; width:100%; max-width:1300px; }
   .apresentacao-duas-colunas > div{ flex:1; }
+  /* Grid do slide "Comparativo mensal" quando há um período customizado com mais
+     de 2 meses selecionado — uma coluna por mês, em vez de só duas fixas. */
+  .comparativo-mensal-grid{
+    display:grid; grid-template-columns:repeat(auto-fit, minmax(190px, 1fr));
+    gap:20px; width:100%; max-width:1400px; margin-top:26px;
+  }
+  .comparativo-mensal-col{
+    background:var(--panel); border:1px solid var(--border); border-radius:16px; padding:20px 18px;
+  }
+  .comparativo-mensal-col .comparativo-mensal-col-titulo{
+    font-size:17px; color:var(--text); font-weight:700; margin-bottom:14px; text-align:center;
+  }
+  .comparativo-mensal-col .slide-lista-numerica .item .nome{ font-size:15px; }
+  .comparativo-mensal-col .slide-lista-numerica .item .num{ font-size:18px; }
   .apresentacao-controles{
     position:absolute; bottom:22px; left:0; right:0; z-index:5;
     display:flex; align-items:center; justify-content:center; gap:18px;
@@ -636,6 +675,10 @@ function renderizarComparativo() {
   .apresentacao-container:fullscreen .slide-destaque{ font-size:150px; }
   .apresentacao-container:fullscreen .slide-destaque-legenda{ font-size:28px; }
   .apresentacao-container:fullscreen .apresentacao-duas-colunas{ max-width:1450px; }
+  .apresentacao-container:fullscreen .comparativo-mensal-grid{ max-width:1750px; }
+  .apresentacao-container:fullscreen .comparativo-mensal-col .comparativo-mensal-col-titulo{ font-size:20px; }
+  .apresentacao-container:fullscreen .comparativo-mensal-col .slide-lista-numerica .item .nome{ font-size:18px; }
+  .apresentacao-container:fullscreen .comparativo-mensal-col .slide-lista-numerica .item .num{ font-size:22px; }
   .apresentacao-container:fullscreen .slide-corpo{ gap:40px; max-width:1550px; }
   .apresentacao-container:fullscreen .slide-col-grafico{ flex:1.6; height:500px; }
   .apresentacao-container:fullscreen .slide-col-grafico canvas{ max-height:500px; }
@@ -850,6 +893,7 @@ function renderizarComparativo() {
     <button class="nav-link" data-target="section-tipo">Tipo de Tarefa</button>
     <button class="nav-link" data-target="section-indicadores">Indicadores</button>
     <button class="nav-link" data-target="section-parados">Processos Parados</button>
+    <button class="nav-link" data-target="section-processos">Processos</button>
     <button class="nav-link" data-target="section-apresentacao">Apresentação</button>
     <button class="nav-link" data-target="section-usuarios" id="navUsuarios" style="display:none;">Usuários</button>
   </div>
@@ -1036,7 +1080,7 @@ function renderizarComparativo() {
 
 <div class="tab-panel" id="painel-parados">
 <h1 id="section-parados" style="margin-top:0; display:flex; align-items:center; gap:10px;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:22px;height:22px;color:var(--accent);"><circle cx="12" cy="12" r="9"/><line x1="10" y1="9" x2="10" y2="15"/><line x1="14" y1="9" x2="14" y2="15"/></svg> Processos parados</h1>
-<div class="subtitle">Separados em dois grupos: os que acabaram de cruzar 90 dias sem movimentação, e os crônicos (mais de 120 dias) — antes esse segundo grupo não aparecia em lugar nenhum do dashboard.</div>
+<div class="subtitle">Processos que acabaram de cruzar 90 dias sem nenhuma movimentação.</div>
 
 <h2 style="font-size:16px; margin:8px 0 14px 0; display:flex; align-items:center; gap:8px;"><span class="dot" style="background:var(--amber)"></span>Recentes — entre 90 e 120 dias sem movimentação</h2>
 
@@ -1092,62 +1136,6 @@ function renderizarComparativo() {
     </table>
   </div>
 </div>
-
-<h2 style="font-size:16px; margin:8px 0 14px 0; display:flex; align-items:center; gap:8px;"><span class="dot" style="background:var(--red)"></span>Crônicos — mais de 120 dias sem movimentação</h2>
-
-<div class="kpi-grid" id="kpiGridStalledCronico"></div>
-
-<div class="grid3">
-  <div class="card">
-    <h2><span class="dot" style="background:var(--red)"></span>Situação dos processos parados</h2>
-    <div class="progress-list" id="stalledSituacaoListaCronico"></div>
-  </div>
-  <div class="card">
-    <h2><span class="dot" style="background:var(--teal)"></span>Área (top 10)</h2>
-    <div class="chart-wrap" id="stalledAreaChartCronicoWrap"><canvas id="stalledAreaChartCronico"></canvas></div>
-  </div>
-</div>
-
-<div class="grid3">
-  <div class="card">
-    <h2><span class="dot" style="background:var(--purple)"></span>Responsáveis</h2>
-    <div class="chart-wrap" id="stalledRespChartCronicoWrap"><canvas id="stalledRespChartCronico"></canvas></div>
-  </div>
-  <div class="card">
-    <h2><span class="dot" style="background:var(--amber)"></span>Órgão / Tribunal (top 8)</h2>
-    <div class="chart-wrap" id="stalledOrgaoChartCronicoWrap"><canvas id="stalledOrgaoChartCronico"></canvas></div>
-  </div>
-</div>
-
-<div class="grid">
-  <div class="card">
-    <h2><span class="dot" style="background:var(--red)"></span>Polo no processo — quem estamos representando</h2>
-    <canvas id="stalledPoloChartCronico"></canvas>
-  </div>
-  <div class="card">
-    <h2><span class="dot" style="background:var(--accent)"></span>Prioridade de atuação</h2>
-    <div id="poloPriorityBoxCronico" style="display:flex; flex-direction:column; gap:14px; padding:8px 4px;"></div>
-  </div>
-</div>
-
-<div class="card full">
-  <h2><span class="dot" style="background:var(--red)"></span>Lista de processos parados crônicos (<span id="countStalledCronico"></span>)</h2>
-  <div class="filters">
-    <input type="text" id="searchStalledCronico" placeholder="Buscar por processo, assunto, órgão, responsável...">
-    <select id="filterRespStalledCronico"><option value="">Todos os responsáveis</option></select>
-    <select id="filterSitStalledCronico"><option value="">Todas as situações</option></select>
-    <select id="filterPoloStalledCronico"><option value="">Autor e Réu</option></select>
-  </div>
-  <div class="table-wrap" style="max-height:520px;">
-    <table id="stalledTableCronico">
-      <thead>
-        <tr><th>Prioridade</th><th>Processo</th><th>Representando</th><th>Assunto</th><th>Órgão</th><th>Área</th><th>Situação</th><th>Responsável</th><th>Último movimento</th><th>Dias parado</th><th>Idade do processo</th></tr>
-      </thead>
-      <tbody></tbody>
-    </table>
-  </div>
-</div>
-
 
 <script>
 function renderizarProducao() {
@@ -1365,14 +1353,15 @@ upcomingPager.setData(DATA.upcoming_list);
 <script>
 function renderizarProcessosParados() {
   renderizarBlocoParados(STALLED.recentes, '');
-  renderizarBlocoParados(STALLED.cronicos, 'Cronico');
 }
 
 /**
- * Desenha um "bloco" inteiro de processos parados (KPIs, gráficos, tabela)
- * — usada duas vezes: uma para os "recentes" (90-120 dias, sufixo vazio,
- * mantém os mesmos IDs de sempre) e outra para os "crônicos" (mais de 120
- * dias, sufixo "Cronico"). Isso evita duplicar a mesma lógica duas vezes.
+ * Desenha um "bloco" inteiro de processos parados (KPIs, gráficos, tabela).
+ * Recebe um "sufixo" para os IDs dos elementos — hoje só é chamada para os
+ * "recentes" (90-120 dias sem movimentação, sufixo vazio); a seção
+ * "crônicos" (mais de 120 dias) foi removida do dashboard a pedido do
+ * cliente (o dado não fazia sentido pra apresentar pra ele), mas a função
+ * continua genérica caso outro bloco com sufixo precise ser adicionado.
  */
 function renderizarBlocoParados(dados, sufixo) {
   const el = (id) => document.getElementById(id + sufixo);
@@ -1735,6 +1724,668 @@ tlSelSit.addEventListener('change', applyTaskListFilters);
 
 </div><!-- fim painel-parados -->
 
+<div class="tab-panel" id="painel-processos">
+<h1 id="section-processos" style="margin-top:0; display:flex; align-items:center; gap:10px;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:22px;height:22px;color:var(--accent);"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/></svg> Processos</h1>
+<div class="subtitle">Cadastro geral de processos — assunto, justiça, área, datas, valor da causa e quem representamos em cada um.</div>
+
+<div class="kpi-grid" id="kpiGridProcessos"></div>
+
+<div class="grid3">
+  <div class="card">
+    <h2><span class="dot" style="background:var(--red)"></span>Situação dos processos</h2>
+    <div class="progress-list" id="processosSituacaoLista"></div>
+  </div>
+  <div class="card">
+    <h2><span class="dot" style="background:var(--teal)"></span>Justiça</h2>
+    <div class="chart-wrap" id="processosJusticaChartWrap"><canvas id="processosJusticaChart"></canvas></div>
+  </div>
+</div>
+
+<div class="grid3">
+  <div class="card">
+    <h2><span class="dot" style="background:var(--purple)"></span>Área do direito</h2>
+    <div class="chart-wrap" id="processosAreaChartWrap"><canvas id="processosAreaChart"></canvas></div>
+  </div>
+  <div class="card">
+    <h2><span class="dot" style="background:var(--amber)"></span>Estado (top 10)</h2>
+    <div class="chart-wrap" id="processosEstadoChartWrap"><canvas id="processosEstadoChart"></canvas></div>
+  </div>
+</div>
+
+
+<div class="card full" style="margin-bottom:32px;">
+  <h2><span class="dot" style="background:var(--amber)"></span>Mapa por estado — passe o mouse para ver o total, clique para ver as cidades</h2>
+  <div class="mapa-processos-layout">
+    <div class="mapa-brasil-wrap" id="mapaBrasilProcessosWrap">
+<svg version="1.1" id="mapaBrasilProcessos" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px" width="450px" height="460px" viewBox="0 0 450 460" enable-background="new 0 0 450 460" xml:space="preserve">
+    <g>
+      <a xlink:href="#tocantins" class="estado" name="Tocantins" code="17">
+        <path stroke="#FFFFFF" stroke-width="1.0404" stroke-linecap="round" stroke-linejoin="round" d="M289.558,235.641
+        c16.104,0.575,44.973-31.647,44.835-45.259c-0.136-13.612-17.227-58.446-22.349-66.088c-5.122-7.628-37.905,2.506-37.905,2.506
+        S234.852,233.695,289.558,235.641z"></path>
+        <text transform="matrix(1 0 0 1 287.0137 188.3208)" fill="#FFFFFF">TO</text>
+      </a>
+      <a xlink:href="#bahia" class="estado" name="Bahia" code="29">
+        <path stroke="#FFFFFF" stroke-width="1.0404" stroke-linecap="round" stroke-linejoin="round" d="M313.276,197.775
+        c2.084-2.739,3.506-7.012,6.464-8.764c1.641-0.973,3.232-4.684,4.271-5.163c2.304-1.014,12.161-25.143,20.706-22.513
+        c1.095,0.342,29.881,3.478,32.153,7.532c2.246-0.506,17.582-8.804,25.829-4.999c9.172,4.246,11.225,20.679,11.2,20.843
+        c0.107,0.328-0.823,5.765-0.985,5.929c-1.15,1-5.258-0.807-4.22,2.138c1.317,3.751,5.094,10.583,9.97,6.613
+        c-3.669,6.574-6.846,16.022-13.966,17.747c-5.808,1.411-4.605,13.421-5.178,18.037c-0.465,3.75,0.192,8.448,1.014,12.117
+        c1.148,4.959-0.821,8.6-1.808,13.42c-0.822,4.162-0.219,8.299-0.987,12.297c-0.271,1.286-4.407,5.723-5.559,7.148
+        c-1.616-1.426-63.952-37.248-73.1-36.265c1.149-3.738,2.438-9.559-0.741-12.723c-8.625-8.572-0.135-19.335-0.162-19.432
+        c-0.546-1.725-5.396-6.079-0.026-7.175c-3.175,0.959-1.944-4.027,0.875-3.012C316.726,200.733,314.044,200.527,313.276,197.775z"></path>
+        <text transform="matrix(1 0 0 1 359.7324 210.1221)" fill="#FFFFFF">BA</text>
+      </a>
+      <a xlink:href="#sergipe" class="estado" name="Sergipe" code="28">
+        <path stroke="#FFFFFF" stroke-width="1.0404" stroke-linecap="round" stroke-linejoin="round" d="M408.561,191.735
+        c0.521-1.505,2.465-0.725,3.533-0.794c2.273-0.164,0.494-2.738,1.095-3.778c2.026-3.793-2.738-5.999-1.998-10.408
+        c4.024,1.931,9.448,3.397,12.408,6.89c1.343,1.533,5.504,2.656,5.832,4.847c-6.822,0.384-6.901,8.819-11.942,11.572
+        C413.545,202.212,407.055,193.721,408.561,191.735z"></path>
+        <path class="circle" d="M417.324,182.854c6.214,0,11.266,5.035,11.266,11.262c0,6.208-5.052,11.261-11.266,11.261
+        c-6.238,0-11.258-5.053-11.258-11.261C406.063,187.89,411.084,182.854,417.324,182.854z"></path>
+        <text transform="matrix(1 0 0 1 408.9121 198.6689)" fill="#FFFFFF">SE</text>
+      </a>
+      <a xlink:href="#pernambuco" class="estado" name="Pernambuco" code="26">
+        <path stroke="#FFFFFF" stroke-width="1.0404" stroke-linecap="round" stroke-linejoin="round" d="M373.011,167.238
+        c2.709-0.795,6.218-14.106,8.325-15.106c4.136-1.986,17.255-1.437,17.8,4.903c-0.437-0.068,8.189-2.273,7.479-1.466
+        c1.7-0.711,10.518-4.723,12.599-4.82c0.274-0.013,4.603,0.905,3.068,2.315c-0.464,0.439,4.219,3.698,10.789,3.45
+        c4.66-0.176,5.179-3.436,8.627-4.409c5.89-1.67,4.737,3.698,5.589,6.943c-1.182,2.684-1.646,5.586-2.74,8.285
+        c-1.533,3.792-9.804,9.791-13.39,12.119c-7.287,4.778-21.802-4.067-22.762-5.67c-0.602-0.985-2.55-5.121-3.178-5.107
+        c-0.629,0.356-1.04,0.861-1.287,1.519c-0.904-0.013-7.256-3.533-7.502-4.655c-4.769-1.151-5.425,6.108-8.957,6.19
+        c0.219,0.108-8.244,6.681-7.506,3.314C383.556,170.4,374.241,168.566,373.011,167.238z"></path>
+        <text transform="matrix(1 0 0 1 401.3984 165.8003)" fill="#FFFFFF">PE</text>
+      </a>
+      <a xlink:href="#alagoas" class="estado" name="Alagoas" code="27">
+        <path stroke="#FFFFFF" stroke-width="1.0404" stroke-linecap="round" stroke-linejoin="round" d="M413.953,169.018
+        c3.78,3.313,9.424,5.505,12.547,5.491c3.229-0.013,5.009-3.328,7.421-4.794c1.177-0.712,10.297-1.93,9.174,1.042
+        c-1.807,4.848-7.122,8.585-10.024,12.789c-2.792,2-3.423,7.093-6.354,1.864c-3.259,0.424-3.722-4.424-6.957-4.477
+        c-3.668-2.261-7.998-3.769-11.201-6.342C410.615,172.646,412.751,171.359,413.953,169.018z"></path>
+        <path class="circle" d="M436.423,168.763c6.236,0,11.258,5.054,11.258,11.278c0,6.207-5.02,11.259-11.258,11.259
+        c-6.241,0-11.263-5.052-11.263-11.259C425.16,173.816,430.182,168.763,436.423,168.763z"></path>
+        <text transform="matrix(1 0 0 1 429.7891 183.895)" fill="#FFFFFF">AL</text>
+      </a>
+      <a xlink:href="#riograndedonorte" class="estado" name="Rio Grande do Norte" code="24">
+        <path stroke="#FFFFFF" stroke-width="1.0404" stroke-linecap="round" stroke-linejoin="round" d="M404.698,138.795
+        c2.383-4.027,6.574-6.123,8.49-11.149c1.973-5.107,3.834-5.818,8.764-4.642c5.041,1.207,9.339,0.837,14.57,1.671
+        c7.534,1.193,6.848,10.968,9.206,16.516c-1.919,1.096-13.972,0.521-15.064-1.657c-1.041-2.067-2.904,7.107-5.094,7.3
+        c1.532-5.847-12.654,1.78-5.424-8.683c2.545-3.67-6.302-0.808-6.711,0.725C410.121,144.013,407.217,139.151,404.698,138.795z"></path>
+        <path class="circle" d="M430.827,107.798c6.241,0,11.261,5.039,11.261,11.261c0,6.224-5.02,11.261-11.261,11.261
+        c-6.209,0-11.26-5.037-11.26-11.261C419.567,112.837,424.618,107.798,430.827,107.798z"></path>
+        <text transform="matrix(1 0 0 1 422.541 123.9009)" fill="#FFFFFF">RN</text>
+      </a>
+      <a xlink:href="#ceara" class="estado" name="Ceará" code="23">
+        <path stroke="#FFFFFF" stroke-width="1.0404" stroke-linecap="round" stroke-linejoin="round" d="M372.379,104.409
+        c0.437-1.368,2.961-3.627,1.043-5.025c12.106-1.328,17.581-0.849,27.66,6.723c4.026,3.054,6.822,5.574,10.571,9.147
+        c1.317,1.273,7.614,4.313,7.914,6.164c-0.054-0.316-5.396,3.696-5.997,5.217c-1.066,2.684-2.659,6.093-4.3,8.298
+        c0.025-0.055-6.903,3.957-3.532,4.217c-4.41,3.821-1.015,8.135-0.797,11.517c0.196,2.767-4.38,7.587-6.765,5.422
+        c-2.244-1.999-3.998-5.711-7.779-5.094c-1.998,0.329-5.476,2.189-7.612,0.479c-2.52-2.054,3.669-5.162-0.545-7.354
+        c-6.987-3.615-1.264-15.393-6.684-20.239c-3.504-3.136,1.753-7.313,0.109-10.749C374.952,111.68,373.694,105.244,372.379,104.409
+        C373.035,102.314,374.815,105.971,372.379,104.409z"></path>
+        <text transform="matrix(1 0 0 1 386.8379 129.0347)" fill="#FFFFFF">CE</text>
+      </a>
+      <a xlink:href="#piaui" class="estado" name="Piauí" code="22">
+        <path stroke="#FFFFFF" stroke-width="1.0404" stroke-linecap="round" stroke-linejoin="round" d="M320.781,185.478
+        c2.465-5.149-7.505-20.801-7.505-20.801s47.354-65.868,54.285-66.841c0.299-0.042,6.243,1.768,6.463,2.219
+        c0.438,0.863-0.821,5.244-0.685,6.587c0.275,2.629,2.879,6.587,2.328,8.684c-1.15,4.736-1.863,6.134,1.369,9.901
+        c2.794,3.245,0.325,10.16,2.544,14.269c-1.778,4.23,4.768,3.656,3.943,7.613c-0.655,3.163-5.424,7.655-1.176,10.312
+        c0.274,4.642-4.685,4.983-6.79,7.818c-2.631,2.835-5.535,5.013-7.999,7.888c-0.55,0.671-8.821,4.096-9.998,4.082
+        c0.302-0.301-17.665-6.449-11.967,2.354c2.463,3.808-1.505,5.56-3.177,8.778c-0.633,2.164-5.836,0.958-7.836,3.205
+        C328.176,198.748,327.409,180.727,320.781,185.478z"></path>
+        <text transform="matrix(1 0 0 1 355.127 158.1045)" fill="#FFFFFF">PI</text>
+      </a>
+      <a xlink:href="#maranhao" class="estado" name="Maranhão" code="21">
+        <path stroke="#FFFFFF" stroke-width="1.0404" stroke-linecap="round" stroke-linejoin="round" d="M288.845,127.827
+        c4.108-2.726,31.195-48.985,31.386-50.395c1.235,0.397,6.084,7.435,7.562,5.025c0.493,0.013-0.328,2.15-0.547,2.396
+        c-0.054-0.135,2.189-2.286,2.52-2.436c0.521-0.233,1.948,1.903,3.451-0.726c5.642,1.575,1.314,14.31,9.121,11.694
+        c-1.147,0.384,1.452,0.74,0.848,1.905c5.095-6.587,8.488-0.027,15.337,1.491c2.025,0.466,6.243,0.575,8.162,0.207
+        c3.808-0.823-2.082,6.847-2.082,6.887c-1.369,2.986-5.041,1.713-6.818,5.683c-0.684,1.549-3.506,4.327-3.042,6.148
+        c0.494,1.781,2.081,2.863,0.274,4.629c0.603,2.793,3.066,7.109-0.385,9.12c-4.601,4.383,2.304,7.52,1.316,11.598
+        c-0.9,3.726-6.244,5.725-9.147,2.78c-4.847-0.11-6.872,3.821-10.406,6.45c-2.74,2.041-8.793,2.493-10.327,5.642
+        c-1.918,3.929-3.699,8.763-5.341,12.79c-1.699,4.204,6.383,18.762-4.328,15.611c-0.932-0.273-3.396-4.725-3.396-5.738
+        c-0.081-3.739-2.738-4.176-4.821-7.477c0.356-3.025,2.466-6.929,4.766-8.052c3.342-1.63,1.919-6.629-2.466-4.465
+        c-3.505,1.726-4.709-2.794-6.958-5.287c0.548,0.59-3.064-4.696-3.146-3.697c0.19-1.89,2.876-5.833,3.341-8.448
+        c0.575-3.259,0.52-6.764-0.521-10.105c-0.63-2.068-4.656-4.521-6.518-4.437c-1.289,0.287-2.443,0-3.427-0.878
+        C290.983,125.675,290.983,128.044,288.845,127.827z"></path>
+        <text transform="matrix(1 0 0 1 318.2754 126.7036)" fill="#FFFFFF">MA</text>
+      </a>
+      <a xlink:href="#amapa" class="estado" name="Amapá" code="16">
+        <path stroke="#FFFFFF" stroke-width="1.0404" stroke-linecap="round" stroke-linejoin="round" d="M225.198,39.089
+        c3.274,1.165,3.985-1.315,6.572-1.74c3.616-0.603,5.683,2.725,9.037,2.067c4.055-0.78,7.093-8.025,7.314-11.598
+        c4.492-3.534,5.503-11.258,9.42-14.68c6.055,4.258,6.11,15.788,7.589,22.485c-0.164,0.083,6.57,7.998,7.944,8.682
+        c3.396,1.657,3.366,6.203,0.078,9.34c-3.777,3.587-7.449,34.275-7.449,34.275h-46.489c0,0,0.932-50.366,0-51.449
+        C221.814,36.458,223.334,38.417,225.198,39.089z"></path>
+        <text transform="matrix(1 0 0 1 245.9023 52.6099)" fill="#FFFFFF">AP</text>
+      </a>
+      <a xlink:href="#para" class="estado" name="Pará" code="15">
+        <path stroke="#FFFFFF" stroke-width="1.0404" stroke-linecap="round" stroke-linejoin="round" d="M173.378,50.619
+        c2.259,2.63,5.629-4.478,7.901-3.82c3.19,0.918,1.478-1.108,5.026-1.752c1.931,0.806,3.096,0.273,3.519-1.631
+        c0.535-1.26,1.453-1.726,2.725-1.384c1.768-1.684,13.558,3.603,14.68,0.384c0.629-1.821-4.287-5.709-0.302-6.997
+        c1.643-0.533,6.012,0.808,8.75-0.068c3.986-1.288,4.876,2.684,4.382,6.066c0.631,3.587,13.145,5.766,12.982,7.97
+        c3.589-1.518,5.354,12.763,7.105,14.447c0.357,4.26,6.304,8.585,7.07,12.544c0.628,3.396,7.065,3.616,8.213,0.095
+        c2.578-8.133,9.696-10.022,13.475-16.651c4.603-8.038,3.725,3.752,8.955,1.067c2.11,0.411,2.876,3.629,4.574,4.724
+        c3.18,2.027,7.779,0.974,10.572,3.013c-4.192,4.382,8.188,3.752,9.231,3.875c4.682,0.575,8.104,2.383,11.855,3.629
+        c-0.164-0.069,4.792,0.52,5.178,1.245c2.026,3.767-4.904,19.214-6.382,21.486c-1.121,1.713-2.932,4.985-3.727,6.834
+        c-0.902,2.026-4.764,7.313-4.655,9.229c-1.888,0.972-2.248,4.835-5.012,4.328c-3.096,3.026-8.187,4.999-10.27,8.956
+        c2.057,0.781,8.325,1.041,5.311,4.272c-0.821,0.877-1.094,5.533-1.615,6.833c-0.575,1.384-4.464,4.779-6.108,5.34
+        c-4.107,1.426-2.736,4.135-4.271,7.655c-0.933,2.054-0.546,3.491,1.756,4.339c-0.083,2.835-0.988,5.575-2.385,7.998
+        c-3.041,5.245-9.009,9.818-10.079,16.27c-3.261,3.408-87.066-1.22-87.464-2.644c-1.423-5.012,1.508-24.006-2.808-27.88
+        c-0.19-2.082-29.893-6.299-30.714-8.081C150.016,140.479,173.173,58.561,173.378,50.619z M319.139,77.664
+        C319.302,76.912,319.74,78.76,319.139,77.664z"></path>
+        <text transform="matrix(1 0 0 1 232.7725 122.5137)" fill="#FFFFFF">PA</text>
+      </a>
+      <a xlink:href="#roraima" class="estado" name="Roraima" code="14">
+        <path stroke="#FFFFFF" stroke-width="1.0404" stroke-linecap="round" stroke-linejoin="round" d="M113.18,24.107
+        c-0.972-2.753-7.861-5.889-6.999-8.984c0.068-0.232,13.229,6.053,12.79,2.808c0.398,1.329,1.219,1.889,2.439,1.685
+        c1.889-1.301,7.148,4.204,8.216,1.889c0.438-0.959-1.657-3.753,0.74-3.848c1.026,0.438,1.534,0.164,1.52-0.822
+        c0.835-1.752,3.575,0.219,4.793,0.083c0.767-1.056,10.625-3.026,9.037-5.094c1.37,0.438,4.574,0.808,4.63-1.547
+        c4.546-2.054,1.15-4.409,2.644-6.354c2.177-2.82,9.791,0.809,7.327,5.738c-1.972,3.93,7.121,4.027,5.724,9.366
+        c-0.452,1.686-2.479,2.724-3.423,3.971c-1.179,1.546-1.836,9.243-1.356,11.53c1.041,4.889,3.231,8.695,6.134,12.16
+        c1.712,2.027,5.614,2.261,5.724,4.369c0.164,2.945,1.165,6.177,0.329,9.092c-1.547,5.424-36.618,30.471-36.618,30.471
+        s-12.517-52.736-20.335-54.063C115.261,36.417,111.523,25.682,113.18,24.107z"></path>
+        <text transform="matrix(1 0 0 1 136.2939 42.3862)" fill="#FFFFFF">RR</text>
+      </a>
+      <a xlink:href="#amazonas" class="estado" name="Amazonas" code="13">
+        <path stroke="#FFFFFF" stroke-width="1.0404" stroke-linecap="round" stroke-linejoin="round" d="M10.078,136.412
+        c1.15-4.972,4.258-10.394,8.215-13.105c4.41-3.027,7.656-5.71,13.105-6.082c2.165-0.149,10.216-5.75,11.983-2.984
+        c3.711,5.765,4.998-3.739,5.574-7.025c1.726-9.667,3.697-19.322,4.86-29.086c-0.342-1.356-2.013-6.231-2.833-7.163
+        c-1.453-1.616-4.287-2.122-4.768-4.544c-0.272-1.452-0.574-7.258,1.109-8.121c3.494-1.768,6.547-0.042,9.737-0.89
+        c-2.561-4.053,0.302-4.327-5.532-5.135c-3.438-0.466-3.971-2.466-2.738-6.368c1.053-3.3,15.898-1,19.088-1.396
+        c-1.534,0.178-1.11-2.479-0.042-2.616c1.274-0.165,1.576,2.684,3.165,0.998c1.286-1.395,3.189-2.915,4.6-3.751
+        c2.438-1.45,4.533,8.217,4.465,9.833c-0.041,0.78-0.137,2.438,1.177,2.246c3.012-0.466,4.219,2.849,7.273,4.231
+        c3.778,1.713,3.929-1.355,7.023-2.068c4.301-0.985,0.711,3.396,2.383,3.793c1.589,0.385,3.806-4.969,4.821-5.572
+        c0.93-0.533,3.725-0.753,4.846-1.602c3.013-2.245,1.933-1.686,3.492-1.206c3.478,1.041,2.233-8.367,6.491-7.066
+        c1.822-0.466,3.643-2.34,5.533-2.423c1.041-0.043,6.066,2.287,6.544,3.147c0.589,1.465,0.316,2.795-0.793,3.986
+        c1.575,1.425,2.698,3.149,3.355,5.162c0.904,2.862-1.286,6.807,0.588,9.299c-0.22,6.655,4.808,7.887-0.396,12.597
+        c0.192-0.178,6.711,7.067,7.121,8.039c0.971-0.711,4.066,0.849,4.381,1.535c-1.658-3.629,0.547-17.09,6.628-10.915
+        c7.203,7.327,5.491-3.615,9.148-8.627c2.834-3.875,14.597-3.136,14.077,3.246c-1.082,3.273,6.271,14.256,9.667,11.436
+        c2.26,5.737,6.889,4.285,10.407,8.051c5.094,5.464,4.37,3.396,11.313,2.848c-2.259,3.602-3.425,4.808-5.272,8.86
+        c-3.149,6.862-6.15,13.776-9.204,20.678c-2.437,5.505-14.843,23.471-11.105,28.442c4.806,6.395,9.339,30.183,11.324,29.934
+        c-6.162-0.26-48.079-10.625-51.652-8.105c-1.453,1.013-53.626,10.503-55.9,10.819c-6.369,0.875-18.09-7.272-23.719-10.136
+        c-8.601-4.381-16.61-8.981-26.088-11.05c-10.282-2.259-20.635-4.793-29.878-10.011C4.121,145.766,12.433,144.779,10.078,136.412z"></path>
+        <text transform="matrix(1 0 0 1 98.1406 119.0591)" fill="#FFFFFF">AM</text>
+      </a>
+      <a xlink:href="#acre" class="estado" name="Acre" code="12">
+        <path stroke="#FFFFFF" stroke-width="1.0404" stroke-linecap="round" stroke-linejoin="round" d="M3.656,148.545
+        c12.557,7.544,27.524,8.367,41.082,13.2c12.802,8.065,27.278,12.845,40.616,19.872c-2.834,1.205-7.587,4.382-9.983,6.395
+        c-2.93,2.45-1.3,2.04-4.628,1.957c-2.93-0.069-3.957,4.615-7.203,5.259c-2.999,0.603-7.161-1.958-10.995-1.697
+        c-1.905,0.136-11.969-0.056-12.64,0.603c0.313-3.642-0.385-7.299-0.165-10.941c0.096-1.439,1.998-6.533,1.245-7.451
+        c-6.82,3.149-8.339,7.19-16.733,7.013c-2.136-0.042-2.562-2.492-3.081-4.001c-1.247-3.572-7.218-3.422-10.559-3.778
+        c6.299-3.41-3.107-11.9-5.216-15.679c-0.52-0.918-3.588-4.655-3.629-5.957C1.642,150.174,6.612,151.968,3.656,148.545z"></path>
+        <text transform="matrix(1 0 0 1 47.7017 184.9355)" fill="#FFFFFF">AC</text>
+      </a>
+      <a xlink:href="#rondonia" class="estado" name="Rondônia" code="11">
+        <path stroke="#FFFFFF" stroke-width="1.0404" stroke-linecap="round" stroke-linejoin="round" d="M83.34,180.232
+        c0.931-1.574,5.341-4.668,6.312-4.656c1.355-0.067,2.671,0.138,3.958,0.603c3.012,1.44,2.039-1.135,5.341-0.123
+        c-1.274-2.287,3.793-2.943,2.86-0.315c3.068,0.247,2.725-4.683,6.668-5.12c4.438-0.508,5.054-0.646,7.122-4.534
+        c0.135-0.246,2.628-5.519,2.752-5.025c2.191-6.491,14.585-0.878,15.638,3.355c0.397,1.615,1.834,3.137,3.642,4.369
+        c1.246,0.862,6.327-3.999,6.134,1.314c-0.78,1.274,26.663,7.656,30.005,19.282c3.82,13.338-16.421,32.167-18.173,34.043
+        c-4.464,1.191-2.039,1.726-6.6,0.15c-2.574-0.875-6.422,0.986-9.08,0.289c-2.409-0.645-3.041-3.957-5.86-4.683
+        c-3.055-0.78-5.423-1.795-7.654-3.93c-4.041-3.876-8.983-2.645-14.475-3.808c-1.835-0.083-6.053-6.779-7.874-5.327
+        c-1.821-0.438-5.381-9.094-3.397-11.204c0.124-1.67-0.26-3.204-1.163-4.627c-0.986-2.644,1.041-5.026,0.863-7.806
+        c-0.384-6.081-1.028-1.986-3.382-1.903C94.336,180.686,85.957,181.671,83.34,180.232z"></path>
+        <text transform="matrix(1 0 0 1 118.1299 195.3193)" fill="#FFFFFF">RO</text>
+      </a>
+      <a xlink:href="#matogrosso" class="estado" name="Mato Grosso" code="51">
+        <path stroke="#FFFFFF" stroke-width="1.0404" stroke-linecap="round" stroke-linejoin="round" d="M142.237,173.962
+        c4-0.316-1.888-6.452,5-5.738c7.914,0.808,16.295,0.328,24.279,0.218c1.629-0.013,8.902,1.288,7.395-1.833
+        c-1.192-2.453,1.821-6.425,0.425-9.725c2.027-0.864,1.289-3.807,2.629-5.107c1.151-1.123,4.176,7.244,4.436,7.819
+        c1.097,2.451,0.398,5.478,1.932,7.654c1.41,1.987,4.574,2.136,5.889,4.259c3.136,5.136,10.845,4.137,17.13,4.657
+        c20.159,1.656,40.356,2.669,60.486,4.752c-3.48,7.763-3.999,14.912-5.122,22.552c-0.437,2.972,1.863,7.163-0.056,10.065
+        c1.945,1.287,1.346,2.753,1.424,4.409c1.151,25.129-20.429,60.186-33.548,58.569c-10.914-1.369-45.3,0.058-46.928-3.396
+        c-1.165-3.944-6.136-2.658-8.395-6.603c-2.301-4.051,0.684-6.299,0.737-10.242c-6.997,0.603-14.09-0.384-21.102-0.324
+        c0.793-5.016-3.725-9.288-2.929-13.809c0.519-3.025,2.726-2.916,0.932-6.79c-1.206-2.589-0.261-4.247-0.699-6.382
+        c-0.289-1.385-1.042-1.876-2.124-2.424c-2.931-1.493,1.246-2.48,2.056-3.644c1.726-2.465,3.299-11.394,6.545-11.612
+        c1.219-1.999-1.781-3.643-1.465-5.56c-3.902-3.588,0.506-4.643,0.369-7.984c-0.151-3.627-9.654-3.944-12.256-3.751
+        c-1.821,0.137-4.109,0.562-5.888-0.094c0.493-3.521-0.521-6.054-0.535-9.217c-0.014-2.286,1.288-5.177,0.835-7.45
+        C143.581,176.618,141.937,174.714,142.237,173.962z"></path>
+        <text transform="matrix(1 0 0 1 200.0244 218.4175)" fill="#FFFFFF">MT</text>
+      </a>
+      <a xlink:href="#mattogrossodosul" class="estado" name="Mato Grosso do Sul" code="50">
+        <path stroke="#FFFFFF" stroke-width="1.0404" stroke-linecap="round" stroke-linejoin="round" d="M183.198,294.536
+        c2.136-4.464,3.177-9.394,5.312-13.61c1.712-3.344-4.067-7.587-2.423-9.807c0.027-0.026,2.738,3.641,3.917,3.725
+        c3.204-1.534,4.807-2.272,6.984-5.228c2.615-3.59,10.832-3.014,14.051-0.305c1.259,1.041,3.068,2.107,4.668,2.574
+        c3.163,0.934,5.889-3.013,8.559-0.873c3.724,2.982,4.626-1.862,7.86-3.509c1.945-1.012-1.768,8.465-2.244,7.781
+        c2.463,0.959,4.285,0.901,6.82,0.959c3.504,0.081,1.805,1.205,2.436,3.339c0.466,1.564,28.948-5.997,29.416,0.578
+        c0.302,3.837-0.987,61.813-0.987,61.813s-39.532,5.533-41.602,5.286c-3.889-0.492-3.587-3.231-8.063-0.933
+        c-2.028,0.329-6.012,1.205-5.177-2.409c-2.013-4.354-0.111-14.625-4.849-17.088c-1.206-0.659-7.092-2.36-7.504-1.945
+        c-1.699,1.777-3.739,1.562-6.121,1.121c-2.904,0.027-5.629-1.614-8.243-1.203c-4.178,0.656-0.603-2.986-1.645-3.535
+        c0.932-2.847,1.411-9.912,0.453-11.856c-0.165-0.331-3.52-7.232-2.547-8.108C186.306,297.688,182.334,299.415,183.198,294.536z"></path>
+        <text transform="matrix(1 0 0 1 213.2939 306.7236)" fill="#FFFFFF">MS</text>
+      </a>
+      <a xlink:href="#goias" class="estado" name="Goiás" code="52">
+        <path stroke="#FFFFFF" stroke-width="1.0404" stroke-linecap="round" stroke-linejoin="round" d="M237.768,270.519
+        c0.628-2.904,1.835-7.396,4.709-8.766c1.015-1.644,1.754-5.147,2.275-5.586c2.408-2.247,3.889-3.783,6.63-4.656
+        c3.723-1.205,3.338-5.342,4.846-8.165c1.504-2.845,4.736-1.15,5.942-3.382c1.479-2.834,0.741-6.161,2.189-8.874
+        c2.902-5.531,1.862-17.363,8.656-20.567c-4.878,7.641,3.698,4.971,7.201,9.449c2.273,1.738,2.164-1.822,2.71-3.055
+        c1.618-3.533,2.878,2.247,4.52-1.533c0.413,0.37,4.136,5.765,3.427,5.601c-0.029-0.931,0.326-1.408,1.037-1.438
+        c0.108,0.534,0.274,1.013,0.602,1.452c-0.602-0.261,9.697-0.095,8.82,1.534c0.36-0.657-0.602-3.11,0.221-3.438
+        c1.039-0.411,3.971,1.368,6.351,0.438c1.045-0.397,7.889-2.807,7.671-3.683c0.767,0.905,1.262,2.67,2.85,1.286
+        c-2.632,2.274-2.576,4.466,1.258,3.821c-1.861,1.438-2.846,4.341-2.382,6.547c0.357,1.643,3.752,5.973,3.478,6.751
+        c-1.78,0.315,0.602,5.438-2.325,6.078c-3.181,0.701-3.973-5.53-4.3,0.688c-0.164,1.48-1.097,1.67-2.768,0.576
+        c-3.288,0.327-0.549,2.19-1.121,3.888c-0.988,2.902,2.792,6.437-2.411,6.764c-3.586,0.219-2.682,1.341-2.682-2.739
+        c-0.028-4.573-12.054-3.643-10.218,0.521c-4.901,6.355,12.05-0.326,9.668,6.355c-1.313,3.752,15.83,28.211,10.406,25.416
+        c-1.944-0.986-50.804,10.271-49.982,12.105c-5.012-2.136-11.804-7.941-17.391-8.162c-0.438-2.189-3.618-1.284-5.095-1.533
+        c-3.724-0.604,1.04-3.231,0.22-4.109c-1.89-1.916-4.382,1.756-3.588-3.012C239.602,274.627,237.055,273.038,237.768,270.519z"></path>
+        <text transform="matrix(1 0 0 1 266.9111 254.2139)" fill="#FFFFFF">GO</text>
+      </a>
+      <a xlink:href="#parana" class="estado" name="Paraná" code="41">
+        <path stroke="#FFFFFF" stroke-width="1.0404" stroke-linecap="round" stroke-linejoin="round" d="M222.225,363.694
+        c1.807-2.138,1.889-4.881,2.424-7.479c0.301-1.453,0.465-7.86,1.369-8.736c2.3-0.684,2.3-3.315,2.726-5.204
+        c0.616-2.738,2.821-2.958,3.984-5.616c4.369-9.91,38.947-9.529,46.476-9.227c4.658,0.193,15.775,34.563,17.916,33.794
+        c-1.728,2.19-5.754,8.929-8.41,8.984c-4.054,0.057-14.215,14.68-14.215,14.68s-37.329-12.05-40.287-11.285
+        c-3.875-1.449-2.698-6.491-6.054-8.216C226.663,364.623,222.498,367.8,222.225,363.694z"></path>
+        <text transform="matrix(1 0 0 1 248.4453 356.1045)" fill="#FFFFFF">PR</text>
+      </a>
+      <a xlink:href="#santacatarina" class="estado" name="Santa Catarina" code="42">
+        <path stroke="#FFFFFF" stroke-width="1.0404" stroke-linecap="round" stroke-linejoin="round" d="M231.029,383.959
+        c1.669-3.338-0.284-10.516,4.573-10.569c6.631-0.109,13.639,3.559,20.402,3.888c1.317,0.055,5.231,2.163,4.357-1.15
+        c-1.095-4.164,3.945-1.863,5.67-3.179c2.274-1.724,8.187-4.106,11.311-1.367c1.423,1.809,20.05-5.395,13.284,3.946
+        c-1.368,1.395,0.713,10.789,0.466,10.734c-3.449,4.438,1.726,11.666-5.096,15.334c-2.901,1.536-7.284,7.779-9.64,9.995
+        C276.085,411.866,233.534,382.918,231.029,383.959z"></path>
+        <text transform="matrix(1 0 0 1 266.9111 387.7646)" fill="#FFFFFF">SC</text>
+      </a>
+      <a xlink:href="#riograndedosul" class="estado" name="Rio Grande do Sul" code="43">
+        <path stroke="#FFFFFF" stroke-width="1.0404" stroke-linecap="round" stroke-linejoin="round" d="M191.236,416.881
+        c0.52-2.684,7.38-8.409,9.477-10.351c0.37-0.359,8.599-10.08,9.174-8.329c-1.301-3.89,2.781-1.589,3.917-4.819
+        c0.26-0.521,7.04-4.821,7.109-4.795c1.436-0.191,6.721-3.695,7.421-3.257c1.204-2.028,8.927-1.479,8.653-0.824
+        c1.165-0.38,2.284-0.877,3.326-1.479c0.221-0.821,22.459,7.533,24.319,11.531c2.523,5.34,12.217,2.822,13.15,5.563
+        c0.106,0.275-5.809,9.339-3.89,9.173c-0.985,0.08,3.204-2.875,3.834,0.409c-2.793,3.619-4.6,7.834-6.571,11.944
+        c-3.696,7.614-8.872,12.765-15.886,17.42c-7.394,4.902-7.339,11.941-13.257,17.693c-8.091,7.942-10.159-0.574-4.08-5.752
+        c3.806-3.231-22.527-19.746-25.578-22.732c-1.918-1.862-2.384,0.274-4.219,1.15c-2.547,1.205-1.917-2.822-3.588-4.273
+        c-2.3-1.999-4.793-5.479-7.737-6.68c-3.478-1.367-5.615,5.145-9.052,0.821C189.168,418.854,190.332,418.032,191.236,416.881z"></path>
+        <text transform="matrix(1 0 0 1 231.0313 414.4658)" fill="#FFFFFF">RS</text>
+      </a>
+      <a xlink:href="#saopaulo" class="estado" name="São Paulo" code="35">
+        <path stroke="#FFFFFF" stroke-width="1.0404" stroke-linecap="round" stroke-linejoin="round" d="M239.3,330.554
+        c3.26-4.356,9.56-5.039,11.531-10.792c1.369-3.942,3.889-8.818,6.135-13.036c1.561-2.957,7.749-7.121,10.517-8.65
+        c0.383-0.196,32.974-6.138,42.234-1.701c20.265,9.724,26.017,33.879,27.854,33.304c4.408-1.425,5.34,3.778,2.106,4.49
+        c-1.754,0.413-6.519,1.479-6.49,3.399c0.027,3.448,0.521,1.615-2.931,3.639c-2.189-1.42-3.34,4.111-4.763,3.426
+        c-4.271-2.244-6.958,2.96-9.258,1.918c-4.271-1.918-16.98,13.092-19.638,15.336c0.245-0.218-1.148-1.479-1.587-2.685
+        c-0.466-1.369-2.658,0.385-4.025,0.082c-0.986-0.192,1.751-4.079-2.303-4.52c-1.369-0.164-3.753,0.303-4.929,0.084
+        c-2.903-0.547,0.108-2.41-0.439-3.862c-1.067-2.986-3.013-4.931-3.751-7.779c-0.52-1.945,0.165-7.531-3.615-7.395
+        c-0.848-2.956-6.628-1.451-9.066-1.862c-0.162,0.163-8.846-2.684-10.079-2.684c-1.616-0.029-6.791-3.396-7.121-0.274
+        C247.982,330.386,239.876,331.21,239.3,330.554z"></path>
+        <text transform="matrix(1 0 0 1 280.6816 327.3193)" fill="#FFFFFF">SP</text>
+      </a>
+      <a xlink:href="#minasgerais" class="estado" name="Minas Gerais" code="31">
+        <path stroke="#FFFFFF" stroke-width="1.0404" stroke-linecap="round" stroke-linejoin="round" d="M262.881,297.305
+        c-1.696-5.094,15.531-19.882,18.844-13.421c5.531-7.367,15.886,1.588,19.773-3.944c0.988-1.367,3.015-1.453,3.725-2.957
+        c0.326-0.711-0.493-2.793-0.056-3.888c1.369-3.398-4.873-2.355-0.109-6.603c4.547-4.053-1.917-4.739-1.204-8.186
+        c0.957-4.604,1.807-4.713,5.613-6.027c1.943-0.688,0.906-8.272,0.083-8.52c-0.108-2.699,1.974-2.546,3.782-1.617
+        c2.188-0.135-0.276-3.695,0.957-4.243c-0.357,0.151,5.559,1.999,5.724,2.055c0.986,0.358-0.52,3.534-0.931,3.943
+        c8.217-2.355,14.514-11.789,23.279-11.242c4.983,0.316-0.327,4.339,5.367,5.544c0.684,1.234,3.34-1.054,4.054-1.189
+        c2.876-0.536,5.53,3.284,8.106,3.886c2.301,3.578,7.503,0.537,10.298,3.001c1.755,1.589,2.188,3.397,3.396,5.313
+        c1.314,2.052,3.86-0.465,5.726-0.109c3.257,0.656,6.326,2.026,9.338,3.723c2.19,1.205,0.768,3.179-0.548,4.573
+        c-0.765,0.796-3.259,6.165-2.627,5.643c-2.138,1.781-2.628-1.669-3.397,2.764c-0.628,3.674,0.164,4.714,3.149,7.015
+        c4.901,3.229-6.765,3.12-6.71,3.504c0.22,0.601-2.846,41.96-3.835,42.179c-6.737,1.562-14.513,5.311-21.744,7.012
+        c-12.736,2.985-24.295,3.778-29.471,4.656c0,1.452-5.367,6.872-8.518,1.259c0,0-3.041-7.285-2.821-7.229
+        c0.105-0.027,2.138-5.506,2.244-6.137c0.768-3.504-5.042-0.765-5.749-2.188c-0.878-1.81-2.358-4.576-2.166-6.628
+        c1.699-1.205,1.672-2.383-0.08-3.562c-1.04-1.095-1.205-2.303-0.521-3.672c-2.329-1.424-3.065-2.683-5.698-2.462
+        c-1.479,0.138-4.055,3.668-5.506,0.629c0.878,2.108-4.188,0.769-5.094,1.56c-2.354-1.202-1.779,2.028-2.384,3.069
+        c-0.137,0.22-1.014-2.904-1.065-2.961c-1.149-1.175-2.767,4.165-3.505-0.055c0.766-4.105-4.657-2.709-7.67-2.93
+        c-4.708-0.353-5.53-1.613-9.858,0.631C262.993,300.562,262.336,299.274,262.881,297.305z"></path>
+        <text transform="matrix(1 0 0 1 328.4063 286.4561)" fill="#FFFFFF">MG</text>
+      </a>
+      <a xlink:href="#riodejaneiro" class="estado" name="Rio de Janeiro" code="33">
+        <path stroke="#FFFFFF" stroke-width="1.0404" stroke-linecap="round" stroke-linejoin="round" d="M332.886,337.429
+        c-1.26-2.768,8.409-4.795,7.89-6.71c-3.177-1.864-4.602,1.148-6.63-2.959c4.274-0.686,9.533-4.49,13.831-3.562
+        c0.548-0.219,4.902-1.753,4.96,0.167c2.546-1.566,5.479-2.412,8.105-3.837c2.246-1.206,0.932-8.218,3.725-9.643
+        c6.054-3.123,1.398,1.836,7.066,2.959c5.888,1.205,5.395,1.48,5.641,7.067c0.247,5.642-8.763,4.381-11.063,8.764
+        c-1.039,1.999,1.698,5.368-3.368,4.903c-4.188-0.413-10.628,2.355-9.285-3.18c-1.039-0.08-1.861,0.301-2.464,1.124
+        c0,0,0.105,2.767-0.74,2.741c-0.766-0.056-7.643,1.094-7.449,0.463c1.398-0.359,2.708-0.684,4.135-0.794
+        c-1.667-0.713-2.957-1.839-4.901-0.142c0.465,0.195-4.227-0.086-3.379-0.113c-0.521,1.727-3.814,0.699-3.879,3.045
+        C336.717,337.908,333.927,342.41,332.886,337.429z"></path>
+        <path class="circle" d="M355.094,318.613c6.209,0,11.263,5.021,11.263,11.259c0,6.208-5.056,11.264-11.263,11.264
+        c-6.211,0-11.263-5.054-11.263-11.264C343.831,323.634,348.883,318.613,355.094,318.613z"></path>
+        <text transform="matrix(1 0 0 1 347.4648 334.6807)" fill="#FFFFFF">RJ</text>
+      </a>
+      <a xlink:href="#espiritosanto" class="estado" name="Espírito Santo" code="32">
+        <path stroke="#FFFFFF" stroke-width="1.0404" stroke-linecap="round" stroke-linejoin="round" d="M367.119,308.834
+        c1.044-1.999-0.298-5.451,1.841-6.326c3.697-1.453,3.858-0.467,5.941-4.49c0.767-1.563,3.999-5.807,2.848-7.835
+        c-0.439-0.765-3.204-3.613-3.286-4.05c1.04-0.249,2.079-0.219,3.123,0.054c1.366-0.654-6.465-10.519,2.137-8.054
+        c-1.204-0.655-1.535-1.365-0.932-2.135c4.358-0.138,13.856,0.027,12.845,6.738c-0.577,3.835,0.933,8.079-0.577,11.804
+        c-0.218,0.576-5.861,8.954-5.831,8.954c0.985,3.289-5.18,5.808-6.054,8.165c-1.313,3.56-2.135,3.013-5.614,2.573
+        c-1.64-0.274-3.202-0.768-4.736-1.451C368.819,311.297,369.424,309.055,367.119,308.834z"></path>
+        <path class="circle" d="M381.917,284.723c6.21,0,11.261,5.055,11.261,11.262c0,6.212-5.051,11.261-11.261,11.261
+        c-6.212,0-11.263-5.049-11.263-11.261C370.654,289.777,375.705,284.723,381.917,284.723z"></path>
+        <text transform="matrix(1 0 0 1 373.3047 300.4971)" fill="#FFFFFF">ES</text>
+      </a>
+      <a xlink:href="#distritofederal" class="estado" name="Distrito Federal" code="53">
+        <path stroke="#FFFFFF" stroke-width="1.0404" stroke-linecap="round" stroke-linejoin="round" d="M292.461,246.197
+        c0,0,12.929-2.903,14.188,0c1.233,2.903,0.659,10.683-1.424,11.504c-2.08,0.849-14.296-1.806-14.023-3.313
+        C291.503,252.853,292.461,246.197,292.461,246.197z"></path>
+        <path class="circle" d="M300.735,238.34c6.212,0,11.26,5.035,11.26,11.258c0,6.21-5.048,11.263-11.26,11.263
+        c-6.209,0-11.261-5.053-11.261-11.263C289.475,243.377,294.523,238.34,300.735,238.34z"></path>
+        <text transform="matrix(1 0 0 1 292.4141 254.2139)" fill="#FFFFFF">DF</text>
+      </a>
+      <a xlink:href="#paraiba" class="estado" name="Paraíba" code="25">
+        <path stroke="#FFFFFF" stroke-width="1.0404" stroke-linecap="round" stroke-linejoin="round" d="M401.575,141.096
+        c2.081-3.081,16.791-6.82,19.117-4.616c0,1.918,7.259,1.686,10.133,2.712c-0.492,3.038,12.652,1.533,14.408,2.259
+        c1.421,0.589,3.833,11.983,1.421,12.202c-0.874-1.124-2.083-1.739-3.586-1.835c-2.957-0.027-2.546,1.863-4.383,3.108
+        c-2.626,1.767-6.571,1.917-9.558,2.109c-0.162,1.232-3.943,4.438-5.259,4.916c-3.122,1.149-2.657-2.727-5.095-3.602
+        c0.713-1.124,4.082-5.203,3.725-6.205c-1.423-3.846-12.051,5.52-14.981,3.506c-1.396-0.973-6.218,1.493-3.476-2.588
+        C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
+        <path class="circle" d="M433.797,133.597c6.237,0,11.26,5.051,11.26,11.261c0,6.226-5.022,11.262-11.26,11.262
+        c-6.208,0-11.257-5.036-11.257-11.262C422.54,138.647,427.589,133.597,433.797,133.597z"></path>
+        <text transform="matrix(1 0 0 1 425.2129 148.9893)" fill="#FFFFFF">PB</text>
+      </a>
+    </g>
+  </svg>
+    </div>
+    <div class="mapa-processos-cidades">
+      <div id="mapaCidadesTitulo" style="font-size:15px; color:var(--text); font-weight:700; margin-bottom:10px;">Clique em um estado no mapa</div>
+      <div class="chart-wrap" id="mapaCidadesChartWrap" style="height:320px;"><canvas id="mapaCidadesChart"></canvas></div>
+    </div>
+  </div>
+</div>
+<div class="mapa-tooltip" id="mapaTooltipProcessos"></div>
+
+<div class="grid">
+  <div class="card">
+    <h2><span class="dot" style="background:var(--accent)"></span>Instância</h2>
+    <div class="progress-list" id="processosInstanciaLista"></div>
+  </div>
+  <div class="card">
+    <h2><span class="dot" style="background:var(--red)"></span>Polo no processo — quem estamos representando</h2>
+    <canvas id="processosPoloChart"></canvas>
+  </div>
+</div>
+
+<div class="card full" style="margin-bottom:32px;">
+  <h2><span class="dot" style="background:var(--red)"></span>Lista de processos (<span id="countProcessos"></span>)</h2>
+  <div class="filters">
+    <input type="text" id="searchProcessos" placeholder="Buscar por processo, assunto, cliente, cidade...">
+    <select id="filterSitProcessos"><option value="">Todas as situações</option></select>
+    <select id="filterJusticaProcessos"><option value="">Todas as justiças</option></select>
+    <select id="filterAreaProcessos"><option value="">Todas as áreas</option></select>
+    <select id="filterPoloProcessos"><option value="">Autor e Réu</option></select>
+  </div>
+  <div class="table-wrap" style="max-height:520px;">
+    <table id="processosTable">
+      <thead>
+        <tr><th>Polo</th><th>Processo</th><th>Cliente</th><th>Assunto</th><th>Situação</th><th>Justiça</th><th>Área</th><th>Estado/Cidade</th><th>Distribuição</th><th>Valor da causa</th><th>Último andamento</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+/** Formata um número como moeda brasileira, com "—" para valores ausentes. */
+function fmtMoedaProcessos(valor) {
+  if (valor === null || valor === undefined) return '—';
+  return valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
+function renderizarProcessos() {
+  const dados = PROCESSOS;
+
+  // ===== KPIs =====
+  const totalAtivos = dados.situacao_counts['Ativo'] || 0;
+  // "valor_total_causa" já vem calculado do backend, excluindo valores acima do
+  // limite de sanidade (ver LIMITE_SANIDADE_VALOR_CAUSA em data_processor.py) —
+  // um erro de digitação no Projuris (ex: um valor de R$ 41 quatrilhões) não
+  // pode inflar esse total a ponto de ficar sem sentido nenhum pro cliente.
+  // "qtd_valores_suspeitos" avisa quando isso aconteceu, pra não sumir em silêncio.
+  const poloAtivoN = dados.polo_counts['Polo Ativo (Autor)'] || 0;
+  const percPoloAtivoProcessos = dados.total ? Math.round((poloAtivoN / dados.total) * 100) : 0;
+  const rotuloValorCausa = 'Valor total da causa'
+    + (dados.qtd_valores_suspeitos ? ` ⚠️ (${dados.qtd_valores_suspeitos} valor${dados.qtd_valores_suspeitos > 1 ? 'es' : ''} ignorado${dados.qtd_valores_suspeitos > 1 ? 's' : ''} por parecer erro de digitação)` : '');
+
+  const kpisProcessos = [
+    { label: 'Total de processos', value: dados.total, cls: 'accent' },
+    { label: 'Ativos', value: totalAtivos, cls: 'green' },
+    { label: rotuloValorCausa, valorFormatado: fmtMoedaProcessos(dados.valor_total_causa), cls: 'purple' },
+    { label: 'Em polo ativo (Autor)', valorFormatado: percPoloAtivoProcessos + '%', cls: 'red' },
+  ];
+  document.getElementById('kpiGridProcessos').innerHTML = kpisProcessos.map((k, i) => `
+    <div class="kpi ${k.cls}">
+      <div class="label">${k.label}</div>
+      <div class="value" id="kpiProcessosValor${i}">${k.valorFormatado || 0}</div>
+    </div>
+  `).join('');
+  // Só anima os KPIs que são números simples — valor em R$ e % ficam prontos direto,
+  // sem o efeito de contador (o "toLocaleString" da animação não formata moeda/percentual).
+  kpisProcessos.forEach((k, i) => {
+    if (k.valorFormatado === undefined) animarContador(document.getElementById('kpiProcessosValor' + i), k.value);
+  });
+
+  // ===== Situação (lista de progresso) =====
+  renderizarListaProgresso('processosSituacaoLista', dados.situacao_counts);
+
+  // ===== Justiça (bar) =====
+  const justicaLabels = Object.keys(dados.justica_counts);
+  setBarHeight('processosJusticaChart', justicaLabels.length);
+  criarGrafico('processosJusticaChart', {
+    type: 'bar',
+    data: { labels: justicaLabels, datasets: [{ data: justicaLabels.map(j => dados.justica_counts[j]), backgroundColor: COLORS.teal, borderRadius: 5 }] },
+    options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { grid: { color: '#2b2c39' } }, y: { grid: { display: false } } } }
+  });
+
+  // ===== Área (bar) =====
+  const areaLabels = Object.keys(dados.area_counts);
+  setBarHeight('processosAreaChart', areaLabels.length);
+  criarGrafico('processosAreaChart', {
+    type: 'bar',
+    data: { labels: areaLabels, datasets: [{ data: areaLabels.map(a => dados.area_counts[a]), backgroundColor: COLORS.purple, borderRadius: 5 }] },
+    options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { grid: { color: '#2b2c39' } }, y: { grid: { display: false } } } }
+  });
+
+  // ===== Estado (bar, top 10) =====
+  const estadoLabels = Object.entries(dados.estado_counts).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([nome]) => nome);
+  setBarHeight('processosEstadoChart', estadoLabels.length);
+  criarGrafico('processosEstadoChart', {
+    type: 'bar',
+    data: { labels: estadoLabels, datasets: [{ data: estadoLabels.map(e => dados.estado_counts[e]), backgroundColor: COLORS.amber, borderRadius: 5 }] },
+    options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { grid: { color: '#2b2c39' } }, y: { grid: { display: false } } } }
+  });
+
+  // ===== Instância (lista de progresso) =====
+  renderizarListaProgresso('processosInstanciaLista', dados.instancia_counts);
+
+  // ===== Polo no processo (Autor x Réu) =====
+  const POLO_COLORS_PROCESSOS = {
+    'Polo Ativo (Autor)': COLORS.red,
+    'Polo Passivo (Réu)': COLORS.gray,
+    'Misto': COLORS.amber,
+    'Não identificado': COLORS.gray,
+  };
+  const poloLabelsProcessos = Object.keys(dados.polo_counts);
+  criarGrafico('processosPoloChart', {
+    type: 'doughnut',
+    data: {
+      labels: poloLabelsProcessos,
+      datasets: [{ data: poloLabelsProcessos.map(l => dados.polo_counts[l]), backgroundColor: poloLabelsProcessos.map(l => POLO_COLORS_PROCESSOS[l] || COLORS.gray), borderWidth: 2, borderColor: '#1d1e29' }]
+    },
+    options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { boxWidth: 12 } } }, cutout: '62%' }
+  });
+
+  // ===== Tabela de processos =====
+  const POLO_BADGE_PROCESSOS = {
+    'Polo Ativo (Autor)': '<span class="badge atraso">Autor</span>',
+    'Polo Passivo (Réu)': '<span class="badge execucao">Réu</span>',
+    'Misto': '<span class="badge pendente">Misto</span>',
+    'Não identificado': '<span class="badge pendente">—</span>',
+  };
+  function processoRow(p) {
+    return `
+      <tr>
+        <td>${POLO_BADGE_PROCESSOS[p.polo] || '—'}</td>
+        <td>${p.identificador || '—'}</td>
+        <td>${p.cliente || '—'}</td>
+        <td style="max-width:260px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${(p.assunto || '').replace(/"/g, '&quot;')}">${p.assunto || '—'}</td>
+        <td>${p.situacao || '—'}</td>
+        <td>${p.justica || '—'}</td>
+        <td>${p.area || '—'}</td>
+        <td>${[p.estado, p.cidade].filter(Boolean).join(' / ') || '—'}</td>
+        <td>${p.data_distribuicao || '—'}</td>
+        <td>${p.valor_causa_suspeito ? `<span title="Valor fora do padrão — parece erro de digitação no Projuris, e por isso não entra no KPI &quot;Valor total da causa&quot;." style="color:var(--red); cursor:help;">⚠️ ${fmtMoedaProcessos(p.valor_causa)}</span>` : fmtMoedaProcessos(p.valor_causa)}</td>
+        <td>${p.data_ultimo_andamento || '—'}</td>
+      </tr>
+    `;
+  }
+  const processosPager = makePaginatedTable('processosTable', processoRow, 15);
+  processosPager.setData(dados.lista);
+  document.getElementById('countProcessos').textContent = dados.total.toLocaleString('pt-BR');
+
+  const selSitProcessos = document.getElementById('filterSitProcessos');
+  selSitProcessos.innerHTML = '<option value="">Todas as situações</option>' +
+    [...new Set(dados.lista.map(p => p.situacao).filter(Boolean))].sort().map(s => `<option value="${s}">${s}</option>`).join('');
+
+  const selJusticaProcessos = document.getElementById('filterJusticaProcessos');
+  selJusticaProcessos.innerHTML = '<option value="">Todas as justiças</option>' +
+    [...new Set(dados.lista.map(p => p.justica).filter(Boolean))].sort().map(j => `<option value="${j}">${j}</option>`).join('');
+
+  const selAreaProcessos = document.getElementById('filterAreaProcessos');
+  selAreaProcessos.innerHTML = '<option value="">Todas as áreas</option>' +
+    [...new Set(dados.lista.map(p => p.area).filter(Boolean))].sort().map(a => `<option value="${a}">${a}</option>`).join('');
+
+  const selPoloProcessos = document.getElementById('filterPoloProcessos');
+  selPoloProcessos.innerHTML = '<option value="">Autor e Réu</option>' +
+    [...new Set(dados.lista.map(p => p.polo).filter(Boolean))].map(p => `<option value="${p}">${p}</option>`).join('');
+
+  const inputBuscaProcessos = document.getElementById('searchProcessos');
+  function applyProcessosFilters() {
+    const q = inputBuscaProcessos.value.toLowerCase();
+    const sit = selSitProcessos.value;
+    const justica = selJusticaProcessos.value;
+    const area = selAreaProcessos.value;
+    const polo = selPoloProcessos.value;
+    const filtrado = dados.lista.filter(p => {
+      const matchesQ = !q || [p.identificador, p.assunto, p.cliente, p.cidade, p.estado].filter(Boolean).join(' ').toLowerCase().includes(q);
+      const matchesSit = !sit || p.situacao === sit;
+      const matchesJustica = !justica || p.justica === justica;
+      const matchesArea = !area || p.area === area;
+      const matchesPolo = !polo || p.polo === polo;
+      return matchesQ && matchesSit && matchesJustica && matchesArea && matchesPolo;
+    });
+    processosPager.setData(filtrado);
+  }
+  inputBuscaProcessos.addEventListener('input', applyProcessosFilters);
+  selSitProcessos.addEventListener('change', applyProcessosFilters);
+  selJusticaProcessos.addEventListener('change', applyProcessosFilters);
+  selAreaProcessos.addEventListener('change', applyProcessosFilters);
+  selPoloProcessos.addEventListener('change', applyProcessosFilters);
+
+  renderizarMapaProcessos();
+}
+
+/** Remove acentos e baixa a caixa — usado pra casar "Estado" da API com o "name" do SVG do mapa sem depender de acentuação idêntica. */
+function normalizarNomeEstadoMapa(s) {
+  return (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+}
+
+/** Interpola entre um tom neutro (0 processos) e o dourado de destaque (o estado com mais processos), pra colorir o mapa por volume — igual à lógica de um mapa de calor. */
+function corMapaProcessos(t) {
+  const base = [42, 43, 61];   // tom neutro, perto de --panel-2
+  const topo = [212, 175, 55]; // --accent
+  const r = Math.round(base[0] + (topo[0] - base[0]) * t);
+  const g = Math.round(base[1] + (topo[1] - base[1]) * t);
+  const b = Math.round(base[2] + (topo[2] - base[2]) * t);
+  return `rgb(${r},${g},${b})`;
+}
+
+// Guarda qual estado está selecionado no mapa entre uma renderização e outra
+// (ex: trocar de ano não deveria voltar o painel de cidades pro estado padrão
+// se a pessoa já tinha escolhido outro).
+let estadoSelecionadoMapaProcessos = null;
+
+/**
+ * Colore o mapa do Brasil (SVG embutido na página, um <a class="estado"> por
+ * UF) de acordo com PROCESSOS.estado_counts, liga o tooltip de hover e o
+ * clique que abre o gráfico de cidades daquele estado ao lado.
+ */
+function renderizarMapaProcessos() {
+  const dados = PROCESSOS;
+  const svgEl = document.getElementById('mapaBrasilProcessos');
+  const tooltip = document.getElementById('mapaTooltipProcessos');
+  if (!svgEl || !tooltip) return;
+
+  const entradasValidas = Object.entries(dados.estado_counts || {}).filter(([nome]) => nome !== 'Não informado');
+  const maxValor = entradasValidas.reduce((m, [, v]) => Math.max(m, v), 0) || 1;
+
+  const lookupEstado = {};
+  entradasValidas.forEach(([nome, valor]) => { lookupEstado[normalizarNomeEstadoMapa(nome)] = { nome, valor }; });
+
+  svgEl.querySelectorAll('a.estado').forEach(a => {
+    const nomeSvg = a.getAttribute('name');
+    const info = lookupEstado[normalizarNomeEstadoMapa(nomeSvg)];
+    const valor = info ? info.valor : 0;
+    const cor = corMapaProcessos(valor / maxValor);
+    a.querySelectorAll('path').forEach(p => { p.style.fill = cor; });
+    a.classList.toggle('selecionado', !!estadoSelecionadoMapaProcessos && normalizarNomeEstadoMapa(estadoSelecionadoMapaProcessos) === normalizarNomeEstadoMapa(nomeSvg));
+
+    // "dataset.mapaLigado" evita registrar os mesmos listeners de novo toda vez que
+    // o ano/período muda e renderizarProcessos() roda outra vez — o SVG em si nunca
+    // é recriado, só as cores e o estado "selecionado" mudam.
+    if (!a.dataset.mapaLigado) {
+      a.dataset.mapaLigado = '1';
+      a.addEventListener('mouseenter', () => {
+        const atual = lookupEstado[normalizarNomeEstadoMapa(nomeSvg)];
+        tooltip.style.display = 'block';
+        tooltip.innerHTML = `<b>${nomeSvg}</b><br>${(atual ? atual.valor : 0).toLocaleString('pt-BR')} processo(s)`;
+      });
+      a.addEventListener('mousemove', (e) => {
+        tooltip.style.left = (e.clientX + 16) + 'px';
+        tooltip.style.top = (e.clientY + 16) + 'px';
+      });
+      a.addEventListener('mouseleave', () => { tooltip.style.display = 'none'; });
+      a.addEventListener('click', (e) => {
+        e.preventDefault();
+        selecionarEstadoMapaProcessos(nomeSvg);
+      });
+    }
+  });
+
+  // Na primeira vez (nenhum estado escolhido ainda), abre direto no estado com
+  // mais processos, pra o painel de cidades não ficar vazio até alguém clicar.
+  const estadoParaMostrar = estadoSelecionadoMapaProcessos
+    || (entradasValidas.length ? entradasValidas.reduce((a, b) => (b[1] > a[1] ? b : a))[0] : null);
+  if (estadoParaMostrar) selecionarEstadoMapaProcessos(estadoParaMostrar);
+}
+
+/** Marca o estado escolhido no mapa e redesenha o gráfico de cidades daquele estado ao lado. */
+function selecionarEstadoMapaProcessos(nomeEstado) {
+  estadoSelecionadoMapaProcessos = nomeEstado;
+  const svgEl = document.getElementById('mapaBrasilProcessos');
+  if (svgEl) {
+    svgEl.querySelectorAll('a.estado').forEach(a => {
+      a.classList.toggle('selecionado', normalizarNomeEstadoMapa(a.getAttribute('name')) === normalizarNomeEstadoMapa(nomeEstado));
+    });
+  }
+
+  const nomeNormalizado = normalizarNomeEstadoMapa(nomeEstado);
+  const processosDoEstado = (PROCESSOS.lista || []).filter(p => normalizarNomeEstadoMapa(p.estado) === nomeNormalizado);
+  const cidadeCounts = {};
+  processosDoEstado.forEach(p => {
+    const cidade = p.cidade || 'Não informada';
+    cidadeCounts[cidade] = (cidadeCounts[cidade] || 0) + 1;
+  });
+  const cidadesOrdenadas = Object.entries(cidadeCounts).sort((a, b) => b[1] - a[1]).slice(0, 20);
+
+  const totalDoEstado = processosDoEstado.length;
+  document.getElementById('mapaCidadesTitulo').innerHTML =
+    `Cidades — <b>${nomeEstado}</b> (${totalDoEstado.toLocaleString('pt-BR')} processo${totalDoEstado === 1 ? '' : 's'})`;
+
+  const labelsCidades = cidadesOrdenadas.map(([nome]) => nome);
+  setBarHeight('mapaCidadesChart', labelsCidades.length, 26, 320);
+  criarGrafico('mapaCidadesChart', {
+    type: 'bar',
+    data: { labels: labelsCidades, datasets: [{ data: cidadesOrdenadas.map(([, v]) => v), backgroundColor: COLORS.amber, borderRadius: 5 }] },
+    options: {
+      indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: (ctx) => ctx.parsed.x.toLocaleString('pt-BR') + ' processo(s)' } },
+      },
+      scales: { x: { grid: { color: '#2b2c39' } }, y: { grid: { display: false } } },
+    },
+  });
+}
+</script>
+
+</div><!-- fim painel-processos -->
+
 <div class="tab-panel" id="painel-apresentacao">
 <h1 id="section-apresentacao" style="margin-top:0;">Apresentação</h1>
 <div class="subtitle">Modo para exibir em TV ou projetor — use as setas do teclado ou os botões para navegar, e "Tela cheia" ao apresentar.</div>
@@ -1877,8 +2528,8 @@ tlSelSit.addEventListener('change', applyTaskListFilters);
   1. Usuário preenche e-mail/senha e envia o formulário de login.
   2. Fazemos POST para {API_BASE_URL}/auth/login (form-encoded), recebemos um token JWT.
   3. Guardamos o token em sessionStorage (apagado quando a aba/navegador fecha).
-  4. Buscamos /api/tarefas e /api/processos-parados com o token no header Authorization.
-  5. Preenchemos as variáveis globais DATA/TASKTYPE/TASKLIST/STALLED e chamamos
+  4. Buscamos /api/tarefas, /api/processos-parados e /api/processos com o token no header Authorization.
+  5. Preenchemos as variáveis globais DATA/TASKTYPE/TASKLIST/STALLED/PROCESSOS e chamamos
      as funções de renderização (os gráficos e tabelas já existentes).
 */
 
@@ -1980,11 +2631,15 @@ async function carregarDashboard() {
     const respParados = await fetchComAuth('/api/processos-parados');
     STALLED = respParados;
 
+    const respProcessos = await fetchComAuth('/api/processos');
+    PROCESSOS = respProcessos;
+
     renderizarProducao();
     renderizarTiposTarefa();
     renderizarIndicadores();
     renderizarDetalhamento();
     renderizarProcessosParados();
+    renderizarProcessos();
     renderizarApresentacao();
 
     if (usuarioAtual.tipo === 'admin') {
@@ -2568,6 +3223,61 @@ const REGISTRO_SLIDES_APRESENTACAO = [
     `,
   },
   {
+    id: 'processos', nome: 'Panorama de Processos',
+    html: (ctx) => {
+      // Esta aba (diferente das outras) não segue o filtro de ano/período da
+      // Apresentação — é o cadastro geral de processos do escritório, então
+      // lê direto da global PROCESSOS, do mesmo jeito que a aba "Processos"
+      // do dashboard principal já faz.
+      const pTotal = PROCESSOS.total;
+      const pAtivos = PROCESSOS.situacao_counts['Ativo'] || 0;
+      const percAtivosProcessos = pTotal ? Math.round((pAtivos / pTotal) * 100) : 0;
+
+      // "Não informado" às vezes é a maior fatia (dado que falta na planilha,
+      // não uma categoria de verdade) — não faz sentido apresentar isso pro
+      // cliente como "a área/estado líder", então essas entradas ficam de fora.
+      const semNaoInformado = (contagem) => Object.entries(contagem || {}).filter(([nome]) => nome !== 'Não informado').sort((a, b) => b[1] - a[1]);
+      const topEstadoProcessos = semNaoInformado(PROCESSOS.estado_counts)[0] || ['—', 0];
+      const topAreaProcessos = semNaoInformado(PROCESSOS.area_counts)[0] || ['—', 0];
+      const topJusticaProcessos = semNaoInformado(PROCESSOS.justica_counts)[0] || ['—', 0];
+      const percTopJusticaProcessos = pTotal ? Math.round((topJusticaProcessos[1] / pTotal) * 100) : 0;
+
+      // Nomes oficiais completos ("Justiça dos Estados e do Distrito Federal e
+      // Territórios") são longos demais pra um slide — trocamos por um nome
+      // curto só na exibição, sem mudar o dado.
+      const NOME_CURTO_JUSTICA = {
+        'Justiça dos Estados e do Distrito Federal e Territórios': 'Justiça Estadual',
+        'Superior Tribunal de Justiça': 'STJ',
+        'Conselho Nacional de Justiça': 'CNJ',
+      };
+      const nomeJusticaExibicao = NOME_CURTO_JUSTICA[topJusticaProcessos[0]] || topJusticaProcessos[0];
+
+      const poloAtivoNProcessos = PROCESSOS.polo_counts['Polo Ativo (Autor)'] || 0;
+      const percPoloAtivoProcessos = pTotal ? Math.round((poloAtivoNProcessos / pTotal) * 100) : 0;
+
+      return `
+        <div class="apresentacao-slide">
+          <div class="slide-titulo">Panorama de Processos</div>
+          <div class="slide-subtitulo">Cadastro geral de processos do escritório</div>
+          <div class="apresentacao-kpi-grid">
+            <div class="apresentacao-kpi"><div class="valor" style="color:var(--accent)">${pTotal.toLocaleString('pt-BR')}</div><div class="rotulo">Processos cadastrados</div></div>
+            <div class="apresentacao-kpi"><div class="valor" style="color:var(--green)">${percAtivosProcessos}%</div><div class="rotulo">Ativos</div></div>
+            <div class="apresentacao-kpi"><div class="valor" style="color:var(--teal)">${topEstadoProcessos[1].toLocaleString('pt-BR')}</div><div class="rotulo">Processos em ${topEstadoProcessos[0]}</div></div>
+            <div class="apresentacao-kpi"><div class="valor" style="color:var(--amber)">${topAreaProcessos[1].toLocaleString('pt-BR')}</div><div class="rotulo">Em ${topAreaProcessos[0]} (área líder)</div></div>
+            <div class="apresentacao-kpi"><div class="valor" style="color:var(--red)">${percPoloAtivoProcessos}%</div><div class="rotulo">Em polo ativo (Autor)</div></div>
+          </div>
+          <div class="slide-insight" style="max-width:1000px; margin-top:28px;">
+            <span class="icone">💡</span>
+            <span>A maior parte dos processos tramita na <b>${nomeJusticaExibicao}</b> (<b>${percTopJusticaProcessos}%</b> do total),
+            com maior concentração em <b>${topEstadoProcessos[0]}</b>.
+            O escritório atua majoritariamente como <b>${percPoloAtivoProcessos >= 50 ? 'autor' : 'réu'}</b> nesses processos
+            (<b>${percPoloAtivoProcessos}%</b> em polo ativo).</span>
+          </div>
+        </div>
+      `;
+    },
+  },
+  {
     id: 'parados-recentes', nome: 'Processos parados — recentes',
     html: (ctx) => `
       <div class="apresentacao-slide">
@@ -2591,54 +3301,124 @@ const REGISTRO_SLIDES_APRESENTACAO = [
     `,
   },
   {
-    id: 'comparativo-mensal', nome: 'Comparativo com o mês anterior',
+    id: 'comparativo-mensal', nome: 'Comparativo mensal',
     html: (ctx) => {
-      if (!ctx.mesAtual || !ctx.mesAnterior) {
+      const variacao = (atual, anterior) => anterior ? Math.round(((atual - anterior) / anterior) * 100) : null;
+      const fmtDelta = (v) => v === null
+        ? ''
+        : `<span style="font-size:14px; color:${v >= 0 ? 'var(--green)' : 'var(--red)'}"> ${v >= 0 ? '▲' : '▼'} ${Math.abs(v)}%</span>`;
+      // Taxa de sucesso é uma % em cima do total do próprio mês (concluídas/total),
+      // não um volume — por isso a variação dela entre meses é mostrada em pontos
+      // percentuais ("pp"), não em % de crescimento (não faz sentido dizer que uma
+      // taxa de 80% "cresceu 6%" ao ir pra 85%; o certo é dizer "+5pp").
+      const taxaSucessoMes = (m) => m.total ? Math.round((m.concluidas / m.total) * 100) : 0;
+      const fmtDeltaPP = (v) => v === null
+        ? ''
+        : `<span style="font-size:14px; color:${v >= 0 ? 'var(--green)' : 'var(--red)'}"> ${v >= 0 ? '▲' : '▼'} ${Math.abs(v)}pp</span>`;
+      const meses = ctx.mensalVisivel;
+
+      // ----- Com um período customizado marcado: compara TODOS os meses do
+      // período selecionado (não só os dois últimos) — se o advogado marca
+      // um período de 3 meses, mostra os 3 lado a lado, com a variação de
+      // cada mês em relação ao anterior dentro do próprio período.
+      if (periodoApresentacaoAtivo) {
+        if (meses.length < 2) {
+          return `
+            <div class="apresentacao-slide">
+              <div class="slide-titulo">Comparativo mensal</div>
+              <div class="slide-subtitulo">O período selecionado não tem dois meses com dados para comparar.</div>
+            </div>
+          `;
+        }
+        const deltaGeral = variacao(meses[meses.length - 1].total, meses[0].total);
         return `
           <div class="apresentacao-slide">
-            <div class="slide-titulo">Comparativo com o mês anterior</div>
-            <div class="slide-subtitulo">Não há dois meses com dados no período selecionado para comparar.</div>
+            <div class="slide-titulo">Comparativo mensal</div>
+            <div class="slide-subtitulo">${meses.map(m => m.mes_nome).join(' → ')} (${meses.length} meses)</div>
+            <div class="comparativo-mensal-grid">
+              ${meses.map((m, i) => {
+                const anterior = i > 0 ? meses[i - 1] : null;
+                const deltaTotal = anterior ? variacao(m.total, anterior.total) : null;
+                const deltaAud = anterior ? variacao(m.audiencias, anterior.audiencias) : null;
+                const deltaAtend = anterior ? variacao(m.atendimentos, anterior.atendimentos) : null;
+                const taxa = taxaSucessoMes(m);
+                const deltaTaxa = anterior ? taxa - taxaSucessoMes(anterior) : null;
+                return `
+                  <div class="comparativo-mensal-col">
+                    <div class="comparativo-mensal-col-titulo">${m.mes_nome}</div>
+                    <div class="slide-lista-numerica">
+                      <div class="item"><span class="nome">Tarefas</span><span class="num">${m.total.toLocaleString('pt-BR')}${fmtDelta(deltaTotal)}</span></div>
+                      <div class="item"><span class="nome">Taxa de sucesso</span><span class="num">${taxa}%${fmtDeltaPP(deltaTaxa)}</span></div>
+                      <div class="item"><span class="nome">Audiências</span><span class="num">${m.audiencias.toLocaleString('pt-BR')}${fmtDelta(deltaAud)}</span></div>
+                      <div class="item"><span class="nome">Atendimentos</span><span class="num">${m.atendimentos.toLocaleString('pt-BR')}${fmtDelta(deltaAtend)}</span></div>
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+            <div class="slide-insight" style="max-width:1100px; margin-top:28px;">
+              <span class="icone">💡</span>
+              <span>No período selecionado (${meses.length} meses, de ${meses[0].mes_nome} a ${meses[meses.length - 1].mes_nome}),
+              o volume de tarefas ${deltaGeral === null ? 'não pôde ser comparado por falta de base no primeiro mês' : (deltaGeral >= 0 ? `subiu <b>${deltaGeral}%</b>` : `caiu <b>${Math.abs(deltaGeral)}%</b>`)}
+              de ${meses[0].mes_nome} para ${meses[meses.length - 1].mes_nome}.</span>
+            </div>
           </div>
         `;
       }
-      const variacao = (atual, anterior) => anterior ? Math.round(((atual - anterior) / anterior) * 100) : null;
-      const fmtDelta = (v) => v === null
+
+      // ----- Sem período marcado (mostrando o ano inteiro até agora): comparar
+      // só os dois últimos meses não faz muito sentido nessa visão anual. Em vez
+      // disso, mostra o melhor mês x o pior mês do ano, que é o comparativo que
+      // realmente importa quando o recorte é "o ano todo".
+      if (meses.length < 2) {
+        return `
+          <div class="apresentacao-slide">
+            <div class="slide-titulo">Melhor mês x pior mês</div>
+            <div class="slide-subtitulo">Ainda não há dois meses com dados neste ano para comparar.</div>
+          </div>
+        `;
+      }
+      const melhor = ctx.melhorMes;
+      const pior = ctx.piorMes;
+      const deltaTotal = variacao(melhor.total, pior.total);
+      const deltaAud = variacao(melhor.audiencias, pior.audiencias);
+      const deltaAtend = variacao(melhor.atendimentos, pior.atendimentos);
+      const taxaMelhor = taxaSucessoMes(melhor);
+      const taxaPior = taxaSucessoMes(pior);
+      const deltaTaxaGrande = taxaMelhor - taxaPior;
+      const fmtDeltaGrande = (v) => v === null
         ? '<span style="color:var(--muted)">sem base</span>'
         : `<span style="color:${v >= 0 ? 'var(--green)' : 'var(--red)'}">${v >= 0 ? '+' : ''}${v}%</span>`;
-      const deltaTotal = variacao(ctx.mesAtual.total, ctx.mesAnterior.total);
-      const deltaAud = variacao(ctx.mesAtual.audiencias, ctx.mesAnterior.audiencias);
-      const deltaAtend = variacao(ctx.mesAtual.atendimentos, ctx.mesAnterior.atendimentos);
+      const fmtDeltaGrandePP = (v) => `<span style="color:${v >= 0 ? 'var(--green)' : 'var(--red)'}">${v >= 0 ? '+' : ''}${v}pp</span>`;
       return `
         <div class="apresentacao-slide">
-          <div class="slide-titulo">Comparativo com o mês anterior</div>
-          <div class="slide-subtitulo">${ctx.mesAnterior.mes_nome} → ${ctx.mesAtual.mes_nome}</div>
+          <div class="slide-titulo">Melhor mês x pior mês</div>
+          <div class="slide-subtitulo">${pior.mes_nome} → ${melhor.mes_nome} · média mensal do ano: ${ctx.mediaMensal.toLocaleString('pt-BR')} tarefas</div>
           <div class="apresentacao-duas-colunas" style="margin-top:26px; max-width:900px;">
             <div>
-              <div style="font-size:18px; color:var(--muted); margin-bottom:14px; text-align:center;">${ctx.mesAnterior.mes_nome}</div>
+              <div style="font-size:18px; color:var(--muted); margin-bottom:14px; text-align:center;">${pior.mes_nome} <span style="font-size:14px;">(mês mais fraco)</span></div>
               <div class="slide-lista-numerica">
-                <div class="item"><span class="nome">Tarefas</span><span class="num">${ctx.mesAnterior.total.toLocaleString('pt-BR')}</span></div>
-                <div class="item"><span class="nome">Audiências</span><span class="num">${ctx.mesAnterior.audiencias.toLocaleString('pt-BR')}</span></div>
-                <div class="item"><span class="nome">Atendimentos</span><span class="num">${ctx.mesAnterior.atendimentos.toLocaleString('pt-BR')}</span></div>
+                <div class="item"><span class="nome">Tarefas</span><span class="num">${pior.total.toLocaleString('pt-BR')}</span></div>
+                <div class="item"><span class="nome">Taxa de sucesso</span><span class="num">${taxaPior}%</span></div>
+                <div class="item"><span class="nome">Audiências</span><span class="num">${pior.audiencias.toLocaleString('pt-BR')}</span></div>
+                <div class="item"><span class="nome">Atendimentos</span><span class="num">${pior.atendimentos.toLocaleString('pt-BR')}</span></div>
               </div>
             </div>
             <div>
-              <div style="font-size:18px; color:var(--text); margin-bottom:14px; text-align:center; font-weight:700;">${ctx.mesAtual.mes_nome}</div>
+              <div style="font-size:18px; color:var(--text); margin-bottom:14px; text-align:center; font-weight:700;">${melhor.mes_nome} <span style="font-size:14px; font-weight:400; color:var(--muted);">(mês mais forte)</span></div>
               <div class="slide-lista-numerica">
-                <div class="item"><span class="nome">Tarefas</span><span class="num">${ctx.mesAtual.total.toLocaleString('pt-BR')} ${fmtDelta(deltaTotal)}</span></div>
-                <div class="item"><span class="nome">Audiências</span><span class="num">${ctx.mesAtual.audiencias.toLocaleString('pt-BR')} ${fmtDelta(deltaAud)}</span></div>
-                <div class="item"><span class="nome">Atendimentos</span><span class="num">${ctx.mesAtual.atendimentos.toLocaleString('pt-BR')} ${fmtDelta(deltaAtend)}</span></div>
+                <div class="item"><span class="nome">Tarefas</span><span class="num">${melhor.total.toLocaleString('pt-BR')} ${fmtDeltaGrande(deltaTotal)}</span></div>
+                <div class="item"><span class="nome">Taxa de sucesso</span><span class="num">${taxaMelhor}% ${fmtDeltaGrandePP(deltaTaxaGrande)}</span></div>
+                <div class="item"><span class="nome">Audiências</span><span class="num">${melhor.audiencias.toLocaleString('pt-BR')} ${fmtDeltaGrande(deltaAud)}</span></div>
+                <div class="item"><span class="nome">Atendimentos</span><span class="num">${melhor.atendimentos.toLocaleString('pt-BR')} ${fmtDeltaGrande(deltaAtend)}</span></div>
               </div>
             </div>
           </div>
           <div class="slide-insight" style="max-width:900px; margin-top:28px;">
             <span class="icone">💡</span>
-            <span>Em ${ctx.mesAnterior.mes_nome} foram <b>${ctx.mesAnterior.total.toLocaleString('pt-BR')} tarefas</b>,
-            sendo <b>${ctx.mesAnterior.audiencias.toLocaleString('pt-BR')} audiências</b> e
-            <b>${ctx.mesAnterior.atendimentos.toLocaleString('pt-BR')} atendimentos</b>.
-            Em ${ctx.mesAtual.mes_nome} foram <b>${ctx.mesAtual.total.toLocaleString('pt-BR')} tarefas</b>
-            (${fmtDelta(deltaTotal)}), <b>${ctx.mesAtual.audiencias.toLocaleString('pt-BR')} audiências</b>
-            (${fmtDelta(deltaAud)}) e <b>${ctx.mesAtual.atendimentos.toLocaleString('pt-BR')} atendimentos</b>
-            (${fmtDelta(deltaAtend)}).</span>
+            <span>A produção do ano está <b>${ctx.tendencia}</b>${ctx.variacaoMetades !== null ? ` — a segunda metade do intervalo teve <b>${ctx.variacaoMetades >= 0 ? '+' : ''}${ctx.variacaoMetades}%</b> de tarefas em relação à primeira` : ''}.
+            <b>${melhor.mes_nome}</b> foi o mês mais forte, com <b>${melhor.total.toLocaleString('pt-BR')} tarefas</b>,
+            contra <b>${pior.total.toLocaleString('pt-BR')}</b> em <b>${pior.mes_nome}</b>.</span>
           </div>
         </div>
       `;
