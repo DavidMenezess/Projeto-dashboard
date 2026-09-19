@@ -10,6 +10,8 @@ Ponto de entrada da API. Define as rotas:
   GET  /api/tarefas             -> dados da seção "Produção 2026" (protegida)
   GET  /api/processos-parados   -> dados da seção "Processos Parados" (protegida)
   GET  /api/processos           -> cadastro geral de processos (protegida)
+  POST /api/atualizar-planilha  -> substitui uma das 3 planilhas oficiais por um arquivo
+                                    enviado pelo usuário (tela "Atualização", protegida)
   GET  /health                  -> checagem simples de saúde do serviço
 
 Rodar localmente:
@@ -20,8 +22,10 @@ Rodar em produção: veja o Dockerfile (usa uvicorn sem --reload).
 
 import asyncio
 import logging
+import shutil
+from pathlib import Path
 from datetime import datetime, timezone, timedelta
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -34,6 +38,7 @@ from app.auth import (
 )
 from app.data_processor import (
     processar_tarefas, processar_processos_parados, processar_tarefas_periodo, processar_processos,
+    validar_planilha_atualizacao, CONFIG_PLANILHAS_ATUALIZACAO,
 )
 from app.cache import atualizar_cache, obter_cache, obter_ultima_sincronizacao
 
@@ -123,6 +128,35 @@ def _sincronizar_dados_locais():
         logger.info("Planilha de processos processada com sucesso.")
     except FileNotFoundError:
         logger.warning("Planilha de processos não encontrada em %s — aguardando arquivo.", settings.CAMINHO_PLANILHA_PROCESSOS)
+
+
+# Caminho oficial (configurado em .env) de cada planilha que a tela de
+# Atualização pode substituir — usado tanto para saber onde salvar o arquivo
+# enviado quanto, depois, para reprocessá-lo pelo mesmo caminho de sempre.
+CAMINHO_POR_TIPO_ATUALIZACAO = {
+    "tarefas": settings.CAMINHO_PLANILHA_TAREFAS,
+    "processos_parados": settings.CAMINHO_PLANILHA_PROCESSOS_PARADOS,
+    "processos": settings.CAMINHO_PLANILHA_PROCESSOS,
+}
+
+
+def _reprocessar_e_atualizar_cache(tipo: str) -> None:
+    """
+    Reprocessa UM tipo de planilha (a partir do caminho já configurado em
+    settings, que a esta altura já foi substituído pelo arquivo novo) e
+    atualiza só o cache dela — chamado logo depois que a tela de Atualização
+    troca o arquivo, para o dashboard já refletir os dados novos no próximo
+    carregamento, sem esperar a sincronização automática de 10 em 10 minutos.
+    """
+    data_ref = _data_referencia_configurada()
+    if tipo == "tarefas":
+        atualizar_cache("tarefas", processar_tarefas(settings.CAMINHO_PLANILHA_TAREFAS, data_referencia=data_ref))
+    elif tipo == "processos_parados":
+        atualizar_cache("processos_parados", processar_processos_parados(settings.CAMINHO_PLANILHA_PROCESSOS_PARADOS, data_referencia=data_ref))
+    elif tipo == "processos":
+        atualizar_cache("processos", processar_processos(settings.CAMINHO_PLANILHA_PROCESSOS))
+    else:
+        raise ValueError(f"Tipo desconhecido: {tipo}")
 
 
 @app.get("/health", tags=["Infraestrutura"])
@@ -337,3 +371,95 @@ def obter_dados_processos(usuario: Usuario = Depends(obter_usuario_autenticado))
     if dados is None:
         raise HTTPException(status_code=503, detail="Dados ainda não sincronizados. Tente novamente em instantes.")
     return dados
+
+
+@app.post("/api/atualizar-planilha", tags=["Dados"])
+async def atualizar_planilha(
+    tipo: str = Form(...),
+    arquivo: UploadFile = File(...),
+    usuario: Usuario = Depends(obter_usuario_autenticado),
+):
+    """
+    Tela "Atualização": permite que a própria pessoa do escritório troque uma
+    das 3 planilhas oficiais (Tarefas, Processos Parados ou Processos)
+    enviando um arquivo novo, sem precisar mexer no servidor manualmente.
+
+    'tipo' deve ser uma das chaves de CONFIG_PLANILHAS_ATUALIZACAO
+    ("tarefas", "processos_parados" ou "processos") — a mesma planilha,
+    independente do nome do arquivo enviado.
+
+    O arquivo é validado (ver validar_planilha_atualizacao em
+    data_processor.py) ANTES de substituir a planilha oficial: confere se
+    todas as colunas que o dashboard usa estão presentes, tolerando colunas a
+    mais, linhas a mais/a menos e a ordem das colunas — só rejeita quando
+    falta alguma coluna necessária (planilha de tipo errado, ou exportada com
+    campos removidos). Se for inválida, a planilha atual é mantida intacta e
+    o motivo é devolvido para o usuário corrigir (HTTP 422).
+
+    Se for válida: a planilha anterior é guardada com sufixo
+    ".bak-<timestamp>" (só por segurança — nunca é lida pelo dashboard), o
+    arquivo novo assume o lugar da oficial, os dados são reprocessados na
+    hora e o cache é atualizado — o dashboard já reflete a mudança no
+    próximo carregamento. Requer login (qualquer usuário, não só admin).
+    """
+    if tipo not in CONFIG_PLANILHAS_ATUALIZACAO:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Tipo de planilha desconhecido: '{tipo}'. Use um de: {', '.join(CONFIG_PLANILHAS_ATUALIZACAO)}.",
+        )
+
+    nome_exibicao = CONFIG_PLANILHAS_ATUALIZACAO[tipo]["nome_exibicao"]
+    extensao = Path(arquivo.filename or "").suffix or ".xlsx"
+
+    caminho_destino = Path(CAMINHO_POR_TIPO_ATUALIZACAO[tipo])
+    caminho_destino.parent.mkdir(parents=True, exist_ok=True)
+    caminho_temporario = caminho_destino.with_name(caminho_destino.stem + ".upload_tmp" + extensao)
+
+    try:
+        with open(caminho_temporario, "wb") as f:
+            shutil.copyfileobj(arquivo.file, f)
+    finally:
+        await arquivo.close()
+
+    resultado_validacao = validar_planilha_atualizacao(tipo, str(caminho_temporario))
+    if not resultado_validacao["valido"]:
+        caminho_temporario.unlink(missing_ok=True)
+        logger.warning(
+            "Upload de planilha '%s' rejeitado (usuário '%s'): %s",
+            tipo, usuario.chave_login, resultado_validacao["motivo"],
+        )
+        raise HTTPException(status_code=422, detail=resultado_validacao["motivo"])
+
+    # Planilha válida: guarda a anterior como backup (se já existir alguma) e promove a nova.
+    if caminho_destino.exists():
+        backup = caminho_destino.with_name(
+            caminho_destino.stem + f".bak-{datetime.now().strftime('%Y%m%d-%H%M%S')}" + caminho_destino.suffix
+        )
+        shutil.move(str(caminho_destino), str(backup))
+    shutil.move(str(caminho_temporario), str(caminho_destino))
+
+    try:
+        _reprocessar_e_atualizar_cache(tipo)
+    except Exception as exc:
+        # Não deveria acontecer (as colunas já foram validadas acima), mas se
+        # algo inesperado quebrar no processamento, é melhor avisar na hora
+        # do que deixar o cache desatualizado silenciosamente.
+        logger.exception("Falha ao reprocessar a planilha '%s' logo após o upload.", tipo)
+        raise HTTPException(
+            status_code=500,
+            detail=f"O arquivo foi salvo, mas houve um erro ao processá-lo: {exc}. Tente novamente ou avise o suporte.",
+        )
+
+    logger.info(
+        "Planilha '%s' (%s) atualizada por '%s' — %d linha(s), %d coluna(s) extra(s) ignorada(s).",
+        tipo, nome_exibicao, usuario.chave_login,
+        resultado_validacao["total_linhas"], len(resultado_validacao["colunas_extras"]),
+    )
+
+    return {
+        "sucesso": True,
+        "tipo": tipo,
+        "nome_exibicao": nome_exibicao,
+        "total_linhas": resultado_validacao["total_linhas"],
+        "colunas_extras_ignoradas": resultado_validacao["colunas_extras"],
+    }

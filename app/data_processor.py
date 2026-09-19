@@ -64,6 +64,71 @@ MESES_NOME = {1: "Jan", 2: "Fev", 3: "Mar", 4: "Abr", 5: "Mai", 6: "Jun",
 LIMITE_SANIDADE_VALOR_CAUSA = 1_000_000_000  # R$ 1 bilhão
 
 
+# ---------------------------------------------------------------------------
+# Leitura de Excel "à prova de extensão errada" — usada por todo o resto do
+# módulo. Motivo: a tela de Atualização (ver validar_planilha_atualizacao,
+# mais abaixo) deixa o cliente enviar uma planilha nova para SUBSTITUIR uma
+# das 3 planilhas oficiais, e o arquivo que ele exporta do Projuris pode vir
+# num formato (.xlsx, que é um ZIP por dentro) diferente do que o caminho
+# configurado no servidor sugere pelo nome (ex: "processos_parados.xls",
+# formato antigo OLE2) — ou vice-versa. Sem isso, o pandas escolhe o motor de
+# leitura só pela extensão do NOME do arquivo, e pode tentar ler um ZIP com o
+# motor de arquivo antigo (xlrd) ou um arquivo antigo com o motor novo
+# (openpyxl), quebrando mesmo com uma planilha perfeitamente válida.
+# ---------------------------------------------------------------------------
+
+def _detectar_engine_excel(caminho_arquivo: str) -> str | None:
+    """Olha os primeiros bytes do arquivo para descobrir o formato de verdade, em vez de confiar na extensão do nome. Devolve None (deixa o pandas decidir pela extensão, como antes) quando a assinatura não é reconhecida."""
+    try:
+        with open(caminho_arquivo, "rb") as f:
+            assinatura = f.read(8)
+    except OSError:
+        return None
+    if assinatura.startswith(b"PK\x03\x04"):
+        return "openpyxl"  # .xlsx / .xlsm (é um ZIP por dentro)
+    if assinatura.startswith(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"):
+        return "xlrd"  # .xls antigo (formato OLE2)
+    return None
+
+
+def _ler_excel(caminho_arquivo: str, **kwargs) -> pd.DataFrame:
+    """Wrapper de pd.read_excel que escolhe o motor pelo CONTEÚDO real do arquivo (ver _detectar_engine_excel) em vez da extensão do nome — todo o resto do módulo lê arquivos Excel por aqui, nunca direto com pd.read_excel."""
+    engine = _detectar_engine_excel(caminho_arquivo)
+    if engine:
+        kwargs.setdefault("engine", engine)
+    return pd.read_excel(caminho_arquivo, **kwargs)
+
+
+def _localizar_linha_cabecalho(caminho_arquivo: str, coluna_marcador: str, sheet_name: str | None = None, max_linhas: int = 40) -> int | None:
+    """
+    Acha em qual linha (0-indexed) está o cabeçalho de verdade de uma
+    planilha, procurando a primeira linha que contém `coluna_marcador` — em
+    vez de confiar num número de linha fixo, já que o Projuris varia a
+    quantidade de linhas de metadados no topo do arquivo ("Filtros
+    utilizados:", "Data início:" etc.) conforme os filtros usados na
+    exportação.
+
+    Função genérica por trás de _localizar_linha_cabecalho_parados,
+    _localizar_linha_cabecalho_processos e _localizar_linha_cabecalho_tarefas
+    logo abaixo, e também usada por validar_planilha_atualizacao (no fim do
+    arquivo) para conferir se um arquivo enviado pelo usuário na tela de
+    Atualização tem o formato esperado antes de aceitá-lo.
+
+    Devolve None se não encontrar a coluna nas primeiras `max_linhas` linhas
+    — quem chama decide o que fazer: um valor de compatibilidade, no
+    processamento normal de todo dia, ou reportar "planilha inválida", na
+    validação de um arquivo novo.
+    """
+    kwargs = {"header": None, "nrows": max_linhas}
+    if sheet_name:
+        kwargs["sheet_name"] = sheet_name
+    bruto = _ler_excel(caminho_arquivo, **kwargs)
+    for i in range(len(bruto)):
+        if coluna_marcador in bruto.iloc[i].astype(str).values:
+            return i
+    return None
+
+
 def _extrai_papeis(texto) -> list[str]:
     """Extrai os papéis entre parênteses: 'Fulano (Autor), Beltrano (Autor)' -> ['autor', 'autor']."""
     if pd.isna(texto):
@@ -173,6 +238,18 @@ def _categoriza_tarefa(modulo) -> str:
 # Planilha de TAREFAS
 # ---------------------------------------------------------------------------
 
+def _localizar_linha_cabecalho_tarefas(caminho_arquivo: str, max_linhas: int = 40) -> int:
+    """
+    Ver _localizar_linha_cabecalho. Procura a linha com "Identificador da
+    tarefa" (coluna que sempre existe nesta planilha) em vez de confiar num
+    número de linha fixo — antes esta planilha sempre usava "header=2" fixo;
+    mantém esse mesmo valor como último recurso caso a coluna não seja
+    encontrada.
+    """
+    linha = _localizar_linha_cabecalho(caminho_arquivo, "Identificador da tarefa", sheet_name="Tarefas", max_linhas=max_linhas)
+    return linha if linha is not None else 2
+
+
 def _carregar_df_tarefas(caminho_arquivo: str) -> pd.DataFrame:
     """
     Lê a planilha de tarefas do disco e prepara as colunas usadas em todo o
@@ -181,7 +258,8 @@ def _carregar_df_tarefas(caminho_arquivo: str) -> pd.DataFrame:
     processar_tarefas_periodo() (filtro de período arbitrário, usado pelo
     modo Apresentação) sem duplicar a leitura/preparação da planilha.
     """
-    df = pd.read_excel(caminho_arquivo, sheet_name="Tarefas", header=2)
+    linha_cabecalho = _localizar_linha_cabecalho_tarefas(caminho_arquivo)
+    df = _ler_excel(caminho_arquivo, sheet_name="Tarefas", header=linha_cabecalho)
 
     for coluna in ["Data prevista", "Data fatal", "Data da conclusão", "Data de criação"]:
         df[coluna + "_dt"] = pd.to_datetime(df[coluna], format="%d/%m/%Y", errors="coerce")
@@ -518,22 +596,16 @@ def _detalhamento_tarefas(df: pd.DataFrame) -> list[dict]:
 
 def _localizar_linha_cabecalho_parados(caminho_arquivo: str, max_linhas: int = 40) -> int:
     """
-    Acha em qual linha (0-indexed) está o cabeçalho de verdade da planilha de
-    processos parados. Antes isso era fixo em "header=18", mas o número de
+    Ver _localizar_linha_cabecalho. Procura a linha com "Situação processo"
+    (coluna que sempre existe neste relatório) em vez de confiar num número
+    de linha fixo — antes isso era fixo em "header=18", mas o número de
     linhas de metadados que o Projuris coloca no topo do arquivo ("Filtros
     utilizados:", "Data início:", etc.) pode variar de uma exportação para
-    outra dependendo dos filtros usados — já aconteceu de uma exportação vir
-    com uma linha a mais e quebrar a leitura. Em vez de travar num número de
-    linha fixo, procuramos a primeira linha que contém "Situação processo"
-    (uma coluna que sempre existe nesse relatório).
+    outra; mantém esse mesmo valor como último recurso caso a coluna não seja
+    encontrada.
     """
-    bruto = pd.read_excel(caminho_arquivo, header=None, nrows=max_linhas)
-    for i in range(len(bruto)):
-        if "Situação processo" in bruto.iloc[i].astype(str).values:
-            return i
-    # Não achou (formato mudou mais do que isso cobre) — mantém o
-    # comportamento antigo como último recurso, em vez de travar aqui.
-    return 18
+    linha = _localizar_linha_cabecalho(caminho_arquivo, "Situação processo", max_linhas=max_linhas)
+    return linha if linha is not None else 18
 
 
 def processar_processos_parados(caminho_arquivo: str, data_referencia: datetime | None = None) -> dict:
@@ -551,7 +623,7 @@ def processar_processos_parados(caminho_arquivo: str, data_referencia: datetime 
     hoje = pd.Timestamp((data_referencia or datetime.now()).date())
 
     linha_cabecalho = _localizar_linha_cabecalho_parados(caminho_arquivo)
-    df = pd.read_excel(caminho_arquivo, header=linha_cabecalho)
+    df = _ler_excel(caminho_arquivo, header=linha_cabecalho)
     df = df[df["Situação processo"] != "Usuário emissor:"].copy()
 
     df["data_mov_dt"] = pd.to_datetime(df["Data último movimento"], errors="coerce")
@@ -628,20 +700,16 @@ def _construir_bloco_parados(df: pd.DataFrame) -> dict:
 
 def _localizar_linha_cabecalho_processos(caminho_arquivo: str, max_linhas: int = 40) -> int:
     """
-    Mesma ideia de _localizar_linha_cabecalho_parados: essa planilha também
-    vem com linhas de metadados do Projuris no topo ("Filtros utilizados:",
-    "Data início:" etc.) antes do cabeçalho de verdade, e o número de linhas
-    pode variar de uma exportação para outra. Procuramos a primeira linha que
-    contém "Identificador" (o código do processo, ex: "PRO.0000001"), que
-    sempre existe nesse relatório.
+    Ver _localizar_linha_cabecalho. Procura a linha com "Identificador" (o
+    código do processo, ex: "PRO.0000001", que sempre existe nesse relatório)
+    em vez de confiar num número de linha fixo — essa planilha também vem com
+    linhas de metadados do Projuris no topo antes do cabeçalho de verdade, e
+    o número de linhas pode variar de uma exportação para outra; mantém o
+    mesmo valor observado na primeira exportação (linha 2) como último
+    recurso caso a coluna não seja encontrada.
     """
-    bruto = pd.read_excel(caminho_arquivo, sheet_name="Processos", header=None, nrows=max_linhas)
-    for i in range(len(bruto)):
-        if "Identificador" in bruto.iloc[i].astype(str).values:
-            return i
-    # Não achou (formato mudou mais do que isso cobre) — mesmo valor observado
-    # na primeira exportação, como último recurso, em vez de travar aqui.
-    return 2
+    linha = _localizar_linha_cabecalho(caminho_arquivo, "Identificador", sheet_name="Processos", max_linhas=max_linhas)
+    return linha if linha is not None else 2
 
 
 def processar_processos(caminho_arquivo: str) -> dict:
@@ -664,7 +732,7 @@ def processar_processos(caminho_arquivo: str) -> dict:
     reutilização de _extrai_papeis/_classifica_polo.
     """
     linha_cabecalho = _localizar_linha_cabecalho_processos(caminho_arquivo)
-    df = pd.read_excel(caminho_arquivo, sheet_name="Processos", header=linha_cabecalho)
+    df = _ler_excel(caminho_arquivo, sheet_name="Processos", header=linha_cabecalho)
     df = df[df["Identificador"].notna()].copy()
 
     df["papeis"] = df["Cliente"].apply(_extrai_papeis)
@@ -714,3 +782,120 @@ def processar_processos(caminho_arquivo: str) -> dict:
         "qtd_valores_suspeitos": qtd_valores_suspeitos,
         "lista": lista,
     }
+
+
+# ---------------------------------------------------------------------------
+# Tela de "Atualização" — permite que a própria pessoa do escritório troque
+# uma das 3 planilhas oficiais (Tarefas, Processos Parados ou Processos) sem
+# precisar de mim/TI para enviar o arquivo manualmente no servidor.
+#
+# A ideia: antes de aceitar o arquivo enviado e SUBSTITUIR a planilha oficial
+# com ele, confere se é realmente uma planilha do tipo escolhido — mesmas
+# colunas que o processamento (as funções acima) efetivamente usa. Não
+# importa a ORDEM das colunas, não importa se tem linhas a mais ou a menos, e
+# não importa se tem colunas A MAIS do que o necessário (essas simplesmente
+# são ignoradas — o processamento sempre lê pelo NOME da coluna, nunca pela
+# posição, então uma coluna nova que o Projuris passe a exportar não quebra
+# nada e não precisa de nenhum tratamento especial). Só é considerada
+# inválida a planilha em que FALTA alguma coluna que o dashboard precisa.
+# ---------------------------------------------------------------------------
+
+CONFIG_PLANILHAS_ATUALIZACAO = {
+    "tarefas": {
+        "nome_exibicao": "Tarefas",
+        "sheet_name": "Tarefas",
+        "coluna_marcador": "Identificador da tarefa",
+        "colunas_obrigatorias": [
+            "Identificador da tarefa", "Situação", "Módulo", "Tipo de tarefa", "Título",
+            "Data prevista", "Data fatal", "Data da conclusão", "Data de criação",
+            "Responsáveis da tarefa", "Criada por", "Número do processo", "Órgão",
+            "Identificador do módulo", "Situação do processo", "Grupos de trabalho",
+            "Envolvidos do processo (partes ativas)", "Envolvidos do processo (partes passivas)",
+            "Assunto",
+        ],
+    },
+    "processos_parados": {
+        "nome_exibicao": "Processos Parados",
+        "sheet_name": None,
+        "coluna_marcador": "Situação processo",
+        "colunas_obrigatorias": [
+            "Situação processo", "Data último movimento", "Data distribuição",
+            "Envolvidos cliente", "Numero processo", "Assunto", "Orgão", "Área",
+            "Usuários responsáveis",
+        ],
+    },
+    "processos": {
+        "nome_exibicao": "Processos",
+        "sheet_name": "Processos",
+        "coluna_marcador": "Identificador",
+        "colunas_obrigatorias": [
+            "Identificador", "Assunto", "Situação", "Justiça", "Instância", "Área",
+            "Data distribuição", "Valor ação", "Data dos últimos andamentos", "Cliente",
+            "Estado", "Cidade",
+        ],
+    },
+}
+
+
+def validar_planilha_atualizacao(tipo: str, caminho_arquivo: str) -> dict:
+    """
+    Confere se `caminho_arquivo` é uma planilha válida do `tipo` escolhido
+    (uma chave de CONFIG_PLANILHAS_ATUALIZACAO), ANTES de ela substituir a
+    planilha oficial correspondente.
+
+    Devolve sempre um dict com "valido": True/False.
+      - Inválida:  {"valido": False, "motivo": "texto explicando o problema, para mostrar ao usuário"}
+      - Válida:    {"valido": True, "total_linhas": N, "colunas_extras": [...]}
+        "colunas_extras" são colunas que a planilha enviada tem e a oficial
+        não exige — informativo (ex: pra mostrar "detectamos N colunas
+        novas, foram ignoradas"), não impede a atualização.
+    """
+    if tipo not in CONFIG_PLANILHAS_ATUALIZACAO:
+        return {"valido": False, "motivo": f"Tipo de planilha desconhecido: '{tipo}'."}
+
+    config = CONFIG_PLANILHAS_ATUALIZACAO[tipo]
+
+    try:
+        linha_cabecalho = _localizar_linha_cabecalho(
+            caminho_arquivo, config["coluna_marcador"], sheet_name=config["sheet_name"]
+        )
+    except Exception:
+        motivo = "Não foi possível abrir o arquivo como planilha Excel. Confira se é um arquivo .xlsx ou .xls válido"
+        if config["sheet_name"]:
+            motivo += f' e se tem uma aba chamada "{config["sheet_name"]}".'
+        else:
+            motivo += "."
+        return {"valido": False, "motivo": motivo}
+
+    if linha_cabecalho is None:
+        return {
+            "valido": False,
+            "motivo": (
+                f'Não encontramos a coluna "{config["coluna_marcador"]}" nas primeiras linhas do arquivo — '
+                f'toda planilha de "{config["nome_exibicao"]}" precisa ter essa coluna. '
+                f"Confira se você selecionou o arquivo certo."
+            ),
+        }
+
+    kwargs = {"header": linha_cabecalho}
+    if config["sheet_name"]:
+        kwargs["sheet_name"] = config["sheet_name"]
+    try:
+        df = _ler_excel(caminho_arquivo, **kwargs)
+    except Exception as exc:
+        return {"valido": False, "motivo": f"Não foi possível ler a planilha: {exc}"}
+
+    colunas_arquivo = {str(c) for c in df.columns}
+    colunas_faltando = [c for c in config["colunas_obrigatorias"] if c not in colunas_arquivo]
+    if colunas_faltando:
+        return {
+            "valido": False,
+            "motivo": (
+                f'Esta planilha não bate com o formato de "{config["nome_exibicao"]}" — faltam as colunas: '
+                + ", ".join(colunas_faltando)
+                + ". Envie a planilha exportada do Projuris para esse mesmo tipo de dado, sem remover colunas."
+            ),
+        }
+
+    colunas_extras = sorted(colunas_arquivo - set(config["colunas_obrigatorias"]))
+    return {"valido": True, "total_linhas": int(len(df)), "colunas_extras": colunas_extras}

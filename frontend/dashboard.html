@@ -35,6 +35,7 @@ const mapaPaineis = {
   'section-processos': 'painel-processos',
   'section-apresentacao': 'painel-apresentacao',
   'section-usuarios': 'painel-usuarios',
+  'section-atualizacao': 'painel-atualizacao',
 };
 
 function trocarAba(idSecao){
@@ -364,6 +365,7 @@ function renderizarComparativo() {
 </script>
 <style>
   :root{
+    color-scheme:dark;
     --bg:#15161e;
     --panel:#1d1e29;
     --panel-2:#242531;
@@ -722,7 +724,46 @@ function renderizarComparativo() {
     border-radius:8px; padding:7px 10px; font-size:12.5px;
     max-width:100%; box-sizing:border-box;
   }
+  /* ===== Select — visual consistente em TODO o dashboard, sem depender do ===== */
+  /* ===== combobox nativo do sistema operacional (aquela seta e lista "fora ===== */
+  /* ===== do padrão" que aparecem por cima do tema escuro).                 ===== */
+  select{
+    appearance:none; -webkit-appearance:none; -moz-appearance:none;
+    forced-color-adjust:none;
+    padding-right:30px; cursor:pointer;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M0 0L5 6L10 0Z' fill='%238d8fa0'/%3E%3C/svg%3E");
+    background-repeat:no-repeat;
+    background-position:right 11px center;
+  }
+  select:hover{border-color:var(--accent);}
+  select:focus{outline:none; border-color:var(--accent); box-shadow:0 0 0 2px rgba(var(--gold-rgb),.15);}
+  /* A lista de opções em si é desenhada pelo navegador/SO, não pela página — isto
+     tinge o que os navegadores atuais (Chrome, Edge, Firefox) permitem estilizar
+     nela, pra ficar o mais perto possível do resto do tema em vez do branco padrão. */
+  select option{background:var(--panel-2); color:var(--text);}
   .filters select, .filters input[type=text]{ flex:1 1 160px; min-width:0; }
+  /* ===== Campo de arquivo — substitui o botão nativo "Choose File"/"Escolher ===== */
+  /* ===== arquivo" (que vem em inglês e com o visual do SO) por um botão com ===== */
+  /* ===== a cara do resto do dashboard, mantendo o input real por baixo.     ===== */
+  .file-upload-field{
+    display:flex; align-items:center; gap:10px; width:100%;
+    background:var(--panel-2); border:1px solid var(--border); border-radius:8px;
+    padding:6px;
+  }
+  .file-input-oculto{
+    position:absolute; width:1px; height:1px; padding:0; margin:-1px;
+    overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0;
+  }
+  .file-upload-btn{
+    flex-shrink:0; background:transparent; border:1px solid var(--border); color:var(--text);
+    padding:7px 14px; border-radius:6px; font-size:12.5px; font-weight:600; cursor:pointer;
+    white-space:nowrap;
+  }
+  .file-upload-btn:hover{border-color:var(--accent); color:var(--accent);}
+  .file-upload-field:focus-within .file-upload-btn{border-color:var(--accent); color:var(--accent);}
+  .file-upload-nome{
+    font-size:12.5px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
   .tag-row{display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap;}
   .tab-btn{
     background:var(--panel-2); border:1px solid var(--border); color:var(--muted);
@@ -772,8 +813,7 @@ function renderizarComparativo() {
   }
   .login-field input:focus{outline:none; border-color:var(--accent);}
   .login-field select{
-    width:100%; background:var(--panel-2); border:1px solid var(--border); color:var(--text);
-    border-radius:8px; padding:10px 12px; font-size:13.5px; cursor:pointer;
+    width:100%; font-size:13.5px; padding:10px 34px 10px 12px;
   }
   .login-btn{
     width:100%; background:var(--accent); color:#15161e; border:none; border-radius:8px;
@@ -786,6 +826,16 @@ function renderizarComparativo() {
     border-radius:8px; padding:9px 11px; font-size:12px; margin-bottom:14px; display:none;
   }
   .login-error.show{display:block;}
+  .upload-success{
+    background:rgba(122,196,124,.12); border:1px solid rgba(122,196,124,.35); color:var(--green);
+    border-radius:8px; padding:9px 11px; font-size:12px; margin-top:12px; display:none;
+  }
+  .upload-success.show{display:block;}
+  .upload-info{
+    background:rgba(212,175,55,.08); border:1px solid rgba(212,175,55,.25); color:var(--muted);
+    border-radius:8px; padding:12px 14px; font-size:12.5px; line-height:1.6; margin-bottom:16px;
+  }
+  .upload-info b{color:var(--text);}
 
   /* ===== Estado de carregamento / conteúdo principal ===== */
   #appContent{display:none;}
@@ -896,6 +946,7 @@ function renderizarComparativo() {
     <button class="nav-link" data-target="section-processos">Processos</button>
     <button class="nav-link" data-target="section-apresentacao">Apresentação</button>
     <button class="nav-link" data-target="section-usuarios" id="navUsuarios" style="display:none;">Usuários</button>
+    <button class="nav-link" data-target="section-atualizacao">Atualização</button>
   </div>
   <div style="display:flex; align-items:center; gap:12px;">
     <span id="usuarioLogadoLabel" style="font-size:11.5px; color:var(--muted);"></span>
@@ -910,7 +961,7 @@ function renderizarComparativo() {
 <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:16px;">
   <div style="display:flex; align-items:center; gap:10px;">
     <label for="seletorAno" style="font-size:12.5px; color:var(--muted);">Exibindo:</label>
-    <select id="seletorAno" style="background:var(--panel-2); border:1px solid var(--border); color:var(--text); border-radius:8px; padding:9px 16px; font-size:13.5px; font-weight:700; cursor:pointer;"></select>
+    <select id="seletorAno" style="font-weight:700; padding-left:16px;"></select>
   </div>
   <button class="tab-btn" id="btnAbrirComparativo" type="button">Comparar anos/meses</button>
 </div>
@@ -2487,7 +2538,7 @@ function selecionarEstadoMapaProcessos(nomeEstado) {
     </div>
     <div class="login-field" style="margin-bottom:0;">
       <label for="novoTipo">Tipo de acesso</label>
-      <select id="novoTipo" style="width:100%; background:var(--panel-2); border:1px solid var(--border); color:var(--text); border-radius:8px; padding:10px 12px; font-size:13.5px;">
+      <select id="novoTipo" style="width:100%;">
         <option value="normal">Normal</option>
         <option value="admin">Administrador</option>
       </select>
@@ -2514,6 +2565,47 @@ function selecionarEstadoMapaProcessos(nomeEstado) {
 </div>
 
 </div><!-- fim painel-usuarios -->
+
+<div class="tab-panel" id="painel-atualizacao">
+<h1 id="section-atualizacao" style="margin-top:0; display:flex; align-items:center; gap:10px;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:22px;height:22px;color:var(--accent);"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg> Atualização</h1>
+<div class="subtitle">Envie a planilha mais recente para atualizar os dados do dashboard, sem precisar de suporte técnico</div>
+
+<div class="card full" style="margin-bottom:16px;">
+  <h2><span class="dot" style="background:var(--accent)"></span>Enviar planilha atualizada</h2>
+
+  <div class="upload-info">
+    Escolha qual dado você quer atualizar e envie a planilha exportada do Projuris — <b>o nome do arquivo não importa</b>,
+    só o conteúdo. Conferimos se as colunas batem com o tipo escolhido antes de aplicar qualquer mudança:
+    linhas a mais ou a menos e colunas extras não são problema (são ajustadas/ignoradas automaticamente),
+    mas se a planilha enviada não for do tipo certo — ou estiver faltando alguma coluna que usamos —,
+    avisamos o motivo e <b>nada é alterado</b>.
+  </div>
+
+  <form id="formAtualizarPlanilha" style="display:grid; grid-template-columns:1fr 1fr auto; gap:12px; align-items:end;">
+    <div class="login-field" style="margin-bottom:0;">
+      <label for="tipoPlanilhaAtualizacao">Qual planilha você quer atualizar?</label>
+      <select id="tipoPlanilhaAtualizacao" style="width:100%;">
+        <option value="tarefas">Tarefas</option>
+        <option value="processos_parados">Processos Parados</option>
+        <option value="processos">Processos</option>
+      </select>
+    </div>
+    <div class="login-field" style="margin-bottom:0;">
+      <label for="arquivoPlanilhaAtualizacao">Arquivo (.xlsx ou .xls)</label>
+      <div class="file-upload-field">
+        <input type="file" id="arquivoPlanilhaAtualizacao" accept=".xlsx,.xls" required class="file-input-oculto">
+        <label for="arquivoPlanilhaAtualizacao" class="file-upload-btn">Escolher arquivo</label>
+        <span class="file-upload-nome" id="nomeArquivoPlanilhaAtualizacao">Nenhum arquivo escolhido</span>
+      </div>
+    </div>
+    <button type="submit" class="login-btn" id="btnAtualizarPlanilha" style="margin-top:0;">Enviar planilha</button>
+  </form>
+
+  <div class="login-error" id="erroAtualizarPlanilha" style="margin-top:12px;"></div>
+  <div class="upload-success" id="sucessoAtualizarPlanilha"></div>
+</div>
+
+</div><!-- fim painel-atualizacao -->
 
 <div class="footer-note">Dashboard gerado automaticamente a partir da planilha de tarefas · Total de 1.573 tarefas analisadas · 667 processos distintos</div>
 <div class="footer-brand">
@@ -2608,7 +2700,12 @@ let anoSelecionado = null;
 let periodoApresentacaoAtivo = null;
 let periodoDisponivel = null;
 
-async function carregarDashboard() {
+async function carregarDashboard(abaFinal) {
+  // 'abaFinal' deixa quem chamou escolher em qual aba pousar depois do carregamento —
+  // por padrão "Produção" (login normal / retomada de sessão), mas a tela de
+  // Atualização passa 'section-atualizacao' pra não tirar a pessoa de onde ela
+  // estava só porque os dados foram recarregados em seguida ao envio da planilha.
+  abaFinal = abaFinal || 'section-producao';
   document.getElementById('loadingOverlay').classList.add('show');
   try {
     usuarioAtual = await fetchComAuth('/me');
@@ -2654,7 +2751,7 @@ async function carregarDashboard() {
     // desenhados com os painéis visíveis — se escondêssemos as outras abas
     // antes de renderizar, os gráficos dentro delas ficariam com tamanho
     // zero (o Chart.js não consegue medir um elemento com display:none).
-    trocarAba('section-producao');
+    trocarAba(abaFinal);
 
     mostrarDashboard();
   } catch (erro) {
@@ -4098,6 +4195,73 @@ document.getElementById('formNovoUsuario').addEventListener('submit', async (eve
   } finally {
     botao.disabled = false;
     botao.textContent = 'Cadastrar';
+  }
+});
+
+// ===== Seção "Atualização" — cliente envia a planilha mais recente para =====
+// ===== substituir uma das 3 planilhas oficiais direto pelo dashboard.   =====
+
+// O <input type="file"> real fica visualmente escondido (.file-input-oculto) — o
+// <label> estilizado é quem aparece como botão; isto só mantém o nome do arquivo
+// escolhido visível ao lado dele, já que o navegador não faz isso sozinho quando
+// o input não está com sua aparência nativa.
+document.getElementById('arquivoPlanilhaAtualizacao').addEventListener('change', (evento) => {
+  const arquivo = evento.target.files[0];
+  document.getElementById('nomeArquivoPlanilhaAtualizacao').textContent =
+    arquivo ? arquivo.name : 'Nenhum arquivo escolhido';
+});
+
+document.getElementById('formAtualizarPlanilha').addEventListener('submit', async (evento) => {
+  evento.preventDefault();
+  const botao = document.getElementById('btnAtualizarPlanilha');
+  const erroEl = document.getElementById('erroAtualizarPlanilha');
+  const sucessoEl = document.getElementById('sucessoAtualizarPlanilha');
+  erroEl.classList.remove('show');
+  sucessoEl.classList.remove('show');
+
+  const tipo = document.getElementById('tipoPlanilhaAtualizacao').value;
+  const inputArquivo = document.getElementById('arquivoPlanilhaAtualizacao');
+  const arquivo = inputArquivo.files[0];
+  if (!arquivo) {
+    erroEl.textContent = 'Escolha um arquivo antes de enviar.';
+    erroEl.classList.add('show');
+    return;
+  }
+
+  const formData = new FormData();
+  formData.append('tipo', tipo);
+  formData.append('arquivo', arquivo);
+
+  botao.disabled = true;
+  botao.textContent = 'Enviando...';
+
+  try {
+    // Não passa 'Content-Type' de propósito: o navegador define automaticamente
+    // o boundary correto do multipart/form-data quando o body é um FormData —
+    // definir esse header à mão quebraria o upload.
+    const resposta = await fetchComAuth('/api/atualizar-planilha', { method: 'POST', body: formData });
+
+    let mensagem = `"${resposta.nome_exibicao}" atualizada com sucesso — ${resposta.total_linhas.toLocaleString('pt-BR')} linha(s) processada(s).`;
+    if (resposta.colunas_extras_ignoradas && resposta.colunas_extras_ignoradas.length) {
+      mensagem += ` ${resposta.colunas_extras_ignoradas.length} coluna(s) a mais na planilha enviada foram ignoradas (não usadas pelo dashboard): ${resposta.colunas_extras_ignoradas.join(', ')}.`;
+    }
+    sucessoEl.textContent = mensagem;
+    sucessoEl.classList.add('show');
+    document.getElementById('formAtualizarPlanilha').reset();
+    // .reset() limpa o arquivo escolhido no input real, mas não dispara 'change' —
+    // sem esta linha, o nome do arquivo antigo continuaria aparecendo ao lado do botão.
+    document.getElementById('nomeArquivoPlanilhaAtualizacao').textContent = 'Nenhum arquivo escolhido';
+
+    // Recarrega todos os dados do dashboard na hora, pra já refletir a planilha nova
+    // sem precisar esperar a sincronização automática de 10 em 10 minutos no servidor —
+    // e volta pra esta mesma aba (em vez de "Produção", o padrão de um login normal).
+    await carregarDashboard('section-atualizacao');
+  } catch (erro) {
+    erroEl.textContent = erro.message || 'Não foi possível atualizar a planilha.';
+    erroEl.classList.add('show');
+  } finally {
+    botao.disabled = false;
+    botao.textContent = 'Enviar planilha';
   }
 });
 
