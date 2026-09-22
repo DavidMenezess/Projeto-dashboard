@@ -23,7 +23,7 @@
 </script>
 <script>
 // Variáveis globais com os dados vindos da API (preenchidas após o login)
-let DATA, STALLED, TASKTYPE, TASKLIST, INDICADORES, PROCESSOS;
+let DATA, STALLED, TASKTYPE, TASKLIST, INDICADORES, PROCESSOS, CLIENTES;
 let categoriaTipoChartAtiva = 'processual';
 
 // ===== Navegação por abas (troca de painel, não rolagem) =====
@@ -33,6 +33,7 @@ const mapaPaineis = {
   'section-indicadores': 'painel-indicadores',
   'section-parados': 'painel-parados',
   'section-processos': 'painel-processos',
+  'section-clientes': 'painel-clientes',
   'section-apresentacao': 'painel-apresentacao',
   'section-usuarios': 'painel-usuarios',
   'section-atualizacao': 'painel-atualizacao',
@@ -764,6 +765,16 @@ function renderizarComparativo() {
   .file-upload-nome{
     font-size:12.5px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
   }
+  .cliente-row{cursor:pointer;}
+  .cliente-row:hover{background:var(--panel-2);}
+  .cliente-expand-icon{color:var(--muted); font-size:11px; display:inline-block; width:12px;}
+  .cliente-detalhe-row td{background:var(--panel-2); padding:0 16px;}
+  .cliente-detalhe-secao{padding:12px 4px;}
+  .cliente-detalhe-secao h4{margin:0 0 8px; font-size:12.5px; color:var(--accent); text-transform:uppercase; letter-spacing:.3px;}
+  .cliente-detalhe-item{padding:8px 0; border-bottom:1px solid var(--border); font-size:13px;}
+  .cliente-detalhe-item:last-child{border-bottom:none;}
+  .cliente-detalhe-meta{color:var(--muted); font-size:12px;}
+  .cliente-detalhe-vazio{color:var(--muted); font-size:13px; padding:6px 0;}
   .tag-row{display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap;}
   .tab-btn{
     background:var(--panel-2); border:1px solid var(--border); color:var(--muted);
@@ -944,6 +955,7 @@ function renderizarComparativo() {
     <button class="nav-link" data-target="section-indicadores">Indicadores</button>
     <button class="nav-link" data-target="section-parados">Processos Parados</button>
     <button class="nav-link" data-target="section-processos">Processos</button>
+    <button class="nav-link" data-target="section-clientes">Clientes</button>
     <button class="nav-link" data-target="section-apresentacao">Apresentação</button>
     <button class="nav-link" data-target="section-usuarios" id="navUsuarios" style="display:none;">Usuários</button>
     <button class="nav-link" data-target="section-atualizacao">Atualização</button>
@@ -2440,6 +2452,189 @@ function selecionarEstadoMapaProcessos(nomeEstado) {
 
 </div><!-- fim painel-processos -->
 
+<div class="tab-panel" id="painel-clientes">
+<h1 id="section-clientes" style="margin-top:0; display:flex; align-items:center; gap:10px;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:22px;height:22px;color:var(--accent);"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> Clientes</h1>
+<div class="subtitle">Visão agregada por cliente, reunindo Processos, Processos Parados e Tarefas pelo nome de quem representamos. Não é um cadastro oficial do Projuris — os clientes são identificados só pelo nome, sem CPF/CNPJ.</div>
+
+<div class="kpi-grid" id="kpiGridClientes"></div>
+
+<div class="grid3">
+  <div class="card">
+    <h2><span class="dot" style="background:var(--purple)"></span>Área do direito</h2>
+    <div class="chart-wrap" id="clientesAreaChartWrap"><canvas id="clientesAreaChart"></canvas></div>
+  </div>
+  <div class="card">
+    <h2><span class="dot" style="background:var(--red)"></span>Polo — quem estamos representando</h2>
+    <canvas id="clientesPoloChart"></canvas>
+  </div>
+</div>
+
+<div class="card full" style="margin-bottom:32px;">
+  <h2><span class="dot" style="background:var(--accent)"></span>Lista de clientes (<span id="countClientes"></span>) — clique numa linha para ver os processos</h2>
+  <div class="filters">
+    <input type="text" id="searchClientes" placeholder="Buscar por nome do cliente...">
+    <select id="filterPoloClientes"><option value="">Autor e Réu</option></select>
+    <select id="filterAreaClientes"><option value="">Todas as áreas</option></select>
+    <select id="filterParadoClientes">
+      <option value="">Todos os clientes</option>
+      <option value="sim">Só com processo parado</option>
+    </select>
+  </div>
+  <div class="table-wrap" style="max-height:520px;">
+    <table id="clientesTable">
+      <thead>
+        <tr><th></th><th>Cliente</th><th>Polo</th><th>Processos</th><th>Parados</th><th>Tarefas</th><th>Área principal</th><th>Situação predominante</th><th>Estado(s)</th><th>Último andamento</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+/** Abre/fecha a linha de detalhe (processos e processos parados) de um cliente na tabela. */
+function toggleClienteDetalhe(id) {
+  const row = document.getElementById(id);
+  const icon = document.getElementById(id + '-icon');
+  if (!row) return;
+  const aberto = row.style.display !== 'none';
+  row.style.display = aberto ? 'none' : '';
+  if (icon) icon.textContent = aberto ? '▸' : '▾';
+}
+
+function renderizarClientes() {
+  const dados = CLIENTES;
+
+  // ===== KPIs =====
+  const poloAtivoN = dados.polo_counts['Polo Ativo (Autor)'] || 0;
+  const totalProcessosClientes = Object.values(dados.polo_counts).reduce((a, b) => a + b, 0);
+  const percPoloAtivoClientes = totalProcessosClientes ? Math.round((poloAtivoN / totalProcessosClientes) * 100) : 0;
+
+  const kpisClientes = [
+    { label: 'Clientes distintos', value: dados.total_clientes, cls: 'accent' },
+    { label: 'Com processo parado', value: dados.clientes_com_processo_parado, cls: 'red' },
+    { label: 'Processos em polo ativo (Autor)', valorFormatado: percPoloAtivoClientes + '%', cls: 'green' },
+  ];
+  document.getElementById('kpiGridClientes').innerHTML = kpisClientes.map((k, i) => `
+    <div class="kpi ${k.cls}">
+      <div class="label">${k.label}</div>
+      <div class="value" id="kpiClientesValor${i}">${k.valorFormatado || 0}</div>
+    </div>
+  `).join('');
+  kpisClientes.forEach((k, i) => {
+    if (k.valorFormatado === undefined) animarContador(document.getElementById('kpiClientesValor' + i), k.value);
+  });
+
+  // ===== Área do direito (bar) =====
+  const areaLabelsClientes = Object.keys(dados.area_counts);
+  setBarHeight('clientesAreaChart', areaLabelsClientes.length);
+  criarGrafico('clientesAreaChart', {
+    type: 'bar',
+    data: { labels: areaLabelsClientes, datasets: [{ data: areaLabelsClientes.map(a => dados.area_counts[a]), backgroundColor: COLORS.purple, borderRadius: 5 }] },
+    options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { grid: { color: '#2b2c39' } }, y: { grid: { display: false } } } }
+  });
+
+  // ===== Polo (doughnut) =====
+  const POLO_COLORS_CLIENTES = {
+    'Polo Ativo (Autor)': COLORS.red,
+    'Polo Passivo (Réu)': COLORS.gray,
+    'Misto': COLORS.amber,
+    'Não identificado': COLORS.gray,
+  };
+  const poloLabelsClientes = Object.keys(dados.polo_counts);
+  criarGrafico('clientesPoloChart', {
+    type: 'doughnut',
+    data: {
+      labels: poloLabelsClientes,
+      datasets: [{ data: poloLabelsClientes.map(l => dados.polo_counts[l]), backgroundColor: poloLabelsClientes.map(l => POLO_COLORS_CLIENTES[l] || COLORS.gray), borderWidth: 2, borderColor: '#1d1e29' }]
+    },
+    options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { boxWidth: 12 } } }, cutout: '62%' }
+  });
+
+  // ===== Tabela de clientes (com detalhe expansível por linha) =====
+  const POLO_BADGE_CLIENTES = {
+    'Polo Ativo (Autor)': '<span class="badge atraso">Autor</span>',
+    'Polo Passivo (Réu)': '<span class="badge execucao">Réu</span>',
+    'Misto': '<span class="badge pendente">Misto</span>',
+    'Não identificado': '<span class="badge pendente">—</span>',
+  };
+
+  function clienteRow(c, idx) {
+    const detalheId = 'clienteDet' + idx;
+    const processosHtml = c.processos.length
+      ? c.processos.map(p => `
+          <div class="cliente-detalhe-item">
+            <strong>${p.identificador || '—'}</strong> — ${p.assunto || '—'}<br>
+            <span class="cliente-detalhe-meta">${p.situacao || '—'} · ${p.justica || '—'} · ${p.instancia || '—'} · ${p.area || '—'} · ${[p.estado, p.cidade].filter(Boolean).join('/') || '—'} · Distribuído em ${p.data_distribuicao || '—'} · Último andamento: ${p.data_ultimo_andamento || '—'}</span>
+          </div>`).join('')
+      : '<div class="cliente-detalhe-vazio">Nenhum processo cadastrado.</div>';
+    const paradosHtml = c.processos_parados.length
+      ? c.processos_parados.map(p => `
+          <div class="cliente-detalhe-item">
+            <strong>${p.processo || '—'}</strong> — ${p.assunto || '—'}<br>
+            <span class="cliente-detalhe-meta">${p.situacao || '—'} · Órgão: ${p.orgao || '—'} · ${p.area || '—'} · Último movimento: ${p.data_mov || '—'}</span>
+          </div>`).join('')
+      : '';
+    return `
+      <tr class="cliente-row" onclick="toggleClienteDetalhe('${detalheId}')">
+        <td><span class="cliente-expand-icon" id="${detalheId}-icon">▸</span></td>
+        <td>${c.nome}</td>
+        <td>${POLO_BADGE_CLIENTES[c.polo] || '—'}</td>
+        <td>${c.total_processos}</td>
+        <td>${c.total_processos_parados || '—'}</td>
+        <td>${c.total_tarefas || '—'}</td>
+        <td>${c.area_principal || '—'}</td>
+        <td>${c.situacao_predominante || '—'}</td>
+        <td>${(c.estados || []).join(', ') || '—'}</td>
+        <td>${c.ultimo_andamento || '—'}</td>
+      </tr>
+      <tr class="cliente-detalhe-row" id="${detalheId}" style="display:none;">
+        <td colspan="10">
+          <div class="cliente-detalhe-secao"><h4>Processos</h4>${processosHtml}</div>
+          ${paradosHtml ? `<div class="cliente-detalhe-secao"><h4>Processos parados</h4>${paradosHtml}</div>` : ''}
+        </td>
+      </tr>
+    `;
+  }
+
+  const clientesPager = makePaginatedTable('clientesTable', clienteRow, 15);
+  clientesPager.setData(dados.lista);
+  document.getElementById('countClientes').textContent = dados.total_clientes.toLocaleString('pt-BR');
+
+  const selPoloClientes = document.getElementById('filterPoloClientes');
+  selPoloClientes.innerHTML = '<option value="">Autor e Réu</option>' +
+    [...new Set(dados.lista.map(c => c.polo).filter(Boolean))].map(p => `<option value="${p}">${p}</option>`).join('');
+
+  const selAreaClientes = document.getElementById('filterAreaClientes');
+  selAreaClientes.innerHTML = '<option value="">Todas as áreas</option>' +
+    [...new Set(dados.lista.map(c => c.area_principal).filter(Boolean))].sort().map(a => `<option value="${a}">${a}</option>`).join('');
+
+  const selParadoClientes = document.getElementById('filterParadoClientes');
+
+  const inputBuscaClientes = document.getElementById('searchClientes');
+  function applyClientesFilters() {
+    const q = inputBuscaClientes.value.toLowerCase();
+    const polo = selPoloClientes.value;
+    const area = selAreaClientes.value;
+    const parado = selParadoClientes.value;
+    const filtrado = dados.lista.filter(c => {
+      const matchesQ = !q || c.nome.toLowerCase().includes(q);
+      const matchesPolo = !polo || c.polo === polo;
+      const matchesArea = !area || c.area_principal === area;
+      const matchesParado = !parado || (parado === 'sim' && c.total_processos_parados > 0);
+      return matchesQ && matchesPolo && matchesArea && matchesParado;
+    });
+    clientesPager.setData(filtrado);
+    document.getElementById('countClientes').textContent = filtrado.length.toLocaleString('pt-BR');
+  }
+  inputBuscaClientes.addEventListener('input', applyClientesFilters);
+  selPoloClientes.addEventListener('change', applyClientesFilters);
+  selAreaClientes.addEventListener('change', applyClientesFilters);
+  selParadoClientes.addEventListener('change', applyClientesFilters);
+}
+</script>
+
+</div><!-- fim painel-clientes -->
+
 <div class="tab-panel" id="painel-apresentacao">
 <h1 id="section-apresentacao" style="margin-top:0;">Apresentação</h1>
 <div class="subtitle">Modo para exibir em TV ou projetor — use as setas do teclado ou os botões para navegar, e "Tela cheia" ao apresentar.</div>
@@ -2734,12 +2929,16 @@ async function carregarDashboard(abaFinal) {
     const respProcessos = await fetchComAuth('/api/processos');
     PROCESSOS = respProcessos;
 
+    const respClientes = await fetchComAuth('/api/clientes');
+    CLIENTES = respClientes;
+
     renderizarProducao();
     renderizarTiposTarefa();
     renderizarIndicadores();
     renderizarDetalhamento();
     renderizarProcessosParados();
     renderizarProcessos();
+    renderizarClientes();
     renderizarApresentacao();
 
     if (usuarioAtual.tipo === 'admin') {

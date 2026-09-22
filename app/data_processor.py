@@ -31,6 +31,7 @@ passar a ser, essas funções são o lugar certo para adicioná-los.
 """
 
 import re
+import unicodedata
 import pandas as pd
 from datetime import datetime
 
@@ -184,6 +185,39 @@ def _extrai_nomes_clientes(texto) -> list[str]:
         if m and "cliente" in m.group(2).lower():
             nomes.append(m.group(1).strip())
     return nomes
+
+
+def _extrai_nomes_papeis(texto) -> list[tuple[str, str]]:
+    """
+    Extrai pares (nome, papel) de um texto no formato 'Fulano (Autor), Empresa
+    X (Réu)' — usado nas colunas 'Cliente' (planilha Processos) e 'Envolvidos
+    cliente' (Processos Parados), que já vêm só com o(s) envolvido(s) que o
+    escritório representa. Não depende de um separador fixo entre as pessoas
+    (vírgula, '|', etc.): cada nome é capturado como o texto entre o fim do
+    parêntese anterior (ou o início da string) e o parêntese seguinte, com
+    pontuação de separação (vírgula, ponto e vírgula, barra) removida das
+    pontas. Usada para agregação por CLIENTE (ver processar_clientes).
+    """
+    if pd.isna(texto):
+        return []
+    pares = []
+    for m in re.finditer(r"([^()]+)\(([^)]+)\)", str(texto)):
+        nome = m.group(1).strip(" ,;/|\t\n")
+        papel = m.group(2).strip()
+        if nome:
+            pares.append((nome, papel))
+    return pares
+
+
+def _normalizar_nome_cliente(nome: str) -> str:
+    """
+    Chave de agrupamento por cliente: sem acento, minúsculo, espaços
+    colapsados — para 'João Silva' e 'joão  silva' (ou variações de
+    maiúsculas/acentuação entre exportações) caírem no mesmo cliente em vez
+    de virarem duas linhas diferentes na aba Clientes.
+    """
+    sem_acento = unicodedata.normalize("NFKD", nome).encode("ascii", "ignore").decode("ascii")
+    return re.sub(r"\s+", " ", sem_acento).strip().lower()
 
 
 def _classifica_polo_producao(tem_cliente_ativo: bool, tem_cliente_passivo: bool) -> str:
@@ -781,6 +815,155 @@ def processar_processos(caminho_arquivo: str) -> dict:
         "valor_total_causa": round(valor_total_causa, 2),
         "qtd_valores_suspeitos": qtd_valores_suspeitos,
         "lista": lista,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Visão "Clientes" — não existe uma planilha de cadastro de clientes própria
+# no Projuris exportado, então esta função AGREGA, por cliente, o que já está
+# espalhado nas 3 planilhas oficiais (Processos, Processos Parados e
+# Tarefas), agrupando pelo NOME extraído das colunas de partes de cada uma.
+# Sem CPF/CNPJ nem qualquer outro identificador único — a chave de
+# agrupamento é o nome normalizado (ver _normalizar_nome_cliente), a pedido
+# do cliente do escritório. Também não inclui valor da causa.
+# ---------------------------------------------------------------------------
+
+def processar_clientes(caminho_tarefas: str, caminho_processos_parados: str, caminho_processos: str) -> dict:
+    """
+    Lê as 3 planilhas oficiais e devolve, por cliente:
+      - da planilha Processos: cada processo em que ele é parte (assunto,
+        situação, justiça, instância, área, data de distribuição, data do
+        último andamento, estado, cidade, polo)
+      - da planilha Processos Parados: cada processo parado em que ele é
+        parte (assunto, órgão, área, situação, data do último movimento, polo)
+      - da planilha Tarefas: quantidade de tarefas vinculadas a ele
+
+    Devolve também agregados gerais (total de clientes, quantos têm processo
+    parado, distribuição por área do direito e por polo) para os KPIs e
+    gráficos do topo da aba.
+    """
+    linha_cab_processos = _localizar_linha_cabecalho_processos(caminho_processos)
+    df_proc = _ler_excel(caminho_processos, sheet_name="Processos", header=linha_cab_processos)
+    df_proc = df_proc[df_proc["Identificador"].notna()].copy()
+
+    linha_cab_parados = _localizar_linha_cabecalho_parados(caminho_processos_parados)
+    df_par = _ler_excel(caminho_processos_parados, header=linha_cab_parados)
+    df_par = df_par[df_par["Situação processo"] != "Usuário emissor:"].copy()
+
+    df_tar = _carregar_df_tarefas(caminho_tarefas)
+
+    clientes: dict[str, dict] = {}
+
+    def _obter_cliente(chave: str, nome_exibicao: str) -> dict:
+        if chave not in clientes:
+            clientes[chave] = {
+                "nome": nome_exibicao,
+                "processos": [],
+                "processos_parados": [],
+                "total_tarefas": 0,
+            }
+        return clientes[chave]
+
+    # --- Processos ---
+    for _, row in df_proc.iterrows():
+        for nome, papel in _extrai_nomes_papeis(row["Cliente"]):
+            chave = _normalizar_nome_cliente(nome)
+            if not chave:
+                continue
+            cliente = _obter_cliente(chave, nome)
+            data_distribuicao = row["Data distribuição"]
+            cliente["processos"].append({
+                "identificador": _texto_seguro(row["Identificador"]),
+                "assunto": _texto_seguro(row["Assunto"], tamanho_max=160),
+                "situacao": _texto_seguro(row["Situação"]),
+                "justica": _texto_seguro(row["Justiça"]),
+                "instancia": _texto_seguro(row["Instância"]),
+                "area": _texto_seguro(row["Área"]),
+                "data_distribuicao": data_distribuicao.strftime("%d/%m/%Y") if pd.notna(data_distribuicao) else None,
+                "data_ultimo_andamento": _texto_seguro(row["Data dos últimos andamentos"]),
+                "estado": _texto_seguro(row["Estado"]),
+                "cidade": _texto_seguro(row["Cidade"]),
+                "polo": _classifica_polo([papel.strip().lower()]),
+            })
+
+    # --- Processos Parados ---
+    for _, row in df_par.iterrows():
+        for nome, papel in _extrai_nomes_papeis(row["Envolvidos cliente"]):
+            chave = _normalizar_nome_cliente(nome)
+            if not chave:
+                continue
+            cliente = _obter_cliente(chave, nome)
+            cliente["processos_parados"].append({
+                "processo": _texto_seguro(row["Numero processo"]),
+                "assunto": _texto_seguro(row["Assunto"], tamanho_max=160),
+                "orgao": _texto_seguro(row["Orgão"]),
+                "area": _texto_seguro(row["Área"]),
+                "situacao": _texto_seguro(row["Situação processo"]),
+                "data_mov": _texto_seguro(row["Data último movimento"]),
+                "polo": _classifica_polo([papel.strip().lower()]),
+            })
+
+    # --- Tarefas: só conta (o nome vem marcado com o sufixo "- Cliente") ---
+    for coluna in ["Envolvidos do processo (partes ativas)", "Envolvidos do processo (partes passivas)"]:
+        for lista_nomes in df_tar[coluna].apply(_extrai_nomes_clientes):
+            for nome in lista_nomes:
+                chave = _normalizar_nome_cliente(nome)
+                if not chave:
+                    continue
+                cliente = _obter_cliente(chave, nome)
+                cliente["total_tarefas"] += 1
+
+    # ---- Consolida cada cliente: totais e polo/área/situação predominantes ----
+    lista_clientes = []
+    for cliente in clientes.values():
+        todos_polos = [p["polo"] for p in cliente["processos"]] + [p["polo"] for p in cliente["processos_parados"]]
+        polo_counts_cliente = pd.Series(todos_polos).value_counts().to_dict() if todos_polos else {}
+        polo_predominante = max(polo_counts_cliente, key=polo_counts_cliente.get) if polo_counts_cliente else "Não identificado"
+
+        areas = [p["area"] for p in cliente["processos"] if p["area"]] or [p["area"] for p in cliente["processos_parados"] if p["area"]]
+        area_counts_cliente = pd.Series(areas).value_counts().to_dict() if areas else {}
+        area_principal = max(area_counts_cliente, key=area_counts_cliente.get) if area_counts_cliente else "Não informado"
+
+        situacoes = [p["situacao"] for p in cliente["processos"] if p["situacao"]]
+        situacao_counts_cliente = pd.Series(situacoes).value_counts().to_dict() if situacoes else {}
+        situacao_predominante = max(situacao_counts_cliente, key=situacao_counts_cliente.get) if situacao_counts_cliente else "Não informado"
+
+        estados = sorted({p["estado"] for p in cliente["processos"] if p["estado"]})
+
+        datas_andamento = [p["data_ultimo_andamento"] for p in cliente["processos"] if p["data_ultimo_andamento"]]
+        datas_dt = pd.to_datetime(pd.Series(datas_andamento, dtype="object"), format="%d/%m/%Y", errors="coerce").dropna()
+        ultimo_andamento = datas_dt.max().strftime("%d/%m/%Y") if len(datas_dt) else None
+
+        lista_clientes.append({
+            "nome": cliente["nome"],
+            "total_processos": len(cliente["processos"]),
+            "total_processos_parados": len(cliente["processos_parados"]),
+            "total_tarefas": cliente["total_tarefas"],
+            "polo": polo_predominante,
+            "area_principal": area_principal,
+            "situacao_predominante": situacao_predominante,
+            "estados": estados,
+            "ultimo_andamento": ultimo_andamento,
+            "processos": cliente["processos"],
+            "processos_parados": cliente["processos_parados"],
+        })
+
+    lista_clientes.sort(key=lambda c: c["total_processos"], reverse=True)
+
+    todas_areas = [p["area"] for c in lista_clientes for p in c["processos"] if p["area"]]
+    area_counts = pd.Series(todas_areas).value_counts().head(10).to_dict() if todas_areas else {}
+
+    todos_polos_geral = [p["polo"] for c in lista_clientes for p in c["processos"]]
+    polo_counts = pd.Series(todos_polos_geral).value_counts().to_dict() if todos_polos_geral else {}
+
+    clientes_com_parado = sum(1 for c in lista_clientes if c["total_processos_parados"] > 0)
+
+    return {
+        "total_clientes": len(lista_clientes),
+        "clientes_com_processo_parado": clientes_com_parado,
+        "area_counts": {k: int(v) for k, v in area_counts.items()},
+        "polo_counts": {k: int(v) for k, v in polo_counts.items()},
+        "lista": lista_clientes,
     }
 
 

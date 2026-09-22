@@ -10,6 +10,7 @@ Ponto de entrada da API. Define as rotas:
   GET  /api/tarefas             -> dados da seção "Produção 2026" (protegida)
   GET  /api/processos-parados   -> dados da seção "Processos Parados" (protegida)
   GET  /api/processos           -> cadastro geral de processos (protegida)
+  GET  /api/clientes            -> visão agregada por cliente, juntando as 3 planilhas (protegida)
   POST /api/atualizar-planilha  -> substitui uma das 3 planilhas oficiais por um arquivo
                                     enviado pelo usuário (tela "Atualização", protegida)
   GET  /health                  -> checagem simples de saúde do serviço
@@ -38,7 +39,7 @@ from app.auth import (
 )
 from app.data_processor import (
     processar_tarefas, processar_processos_parados, processar_tarefas_periodo, processar_processos,
-    validar_planilha_atualizacao, CONFIG_PLANILHAS_ATUALIZACAO,
+    processar_clientes, validar_planilha_atualizacao, CONFIG_PLANILHAS_ATUALIZACAO,
 )
 from app.cache import atualizar_cache, obter_cache, obter_ultima_sincronizacao
 
@@ -129,6 +130,29 @@ def _sincronizar_dados_locais():
     except FileNotFoundError:
         logger.warning("Planilha de processos não encontrada em %s — aguardando arquivo.", settings.CAMINHO_PLANILHA_PROCESSOS)
 
+    _reprocessar_clientes()
+
+
+def _reprocessar_clientes() -> None:
+    """
+    Recalcula a visão agregada "Clientes" (ver processar_clientes em
+    data_processor.py), que junta as 3 planilhas oficiais pelo nome do
+    cliente. Chamada tanto na sincronização periódica/inicial quanto logo
+    após qualquer uma das 3 planilhas ser trocada pela tela de Atualização —
+    como Clientes depende das 3 ao mesmo tempo, precisa ser reprocessada
+    nos dois casos, não só quando "processos" muda.
+    """
+    try:
+        dados_clientes = processar_clientes(
+            settings.CAMINHO_PLANILHA_TAREFAS,
+            settings.CAMINHO_PLANILHA_PROCESSOS_PARADOS,
+            settings.CAMINHO_PLANILHA_PROCESSOS,
+        )
+        atualizar_cache("clientes", dados_clientes)
+        logger.info("Agregação de clientes processada com sucesso.")
+    except FileNotFoundError:
+        logger.warning("Não foi possível agregar clientes — alguma das 3 planilhas ainda não foi carregada.")
+
 
 # Caminho oficial (configurado em .env) de cada planilha que a tela de
 # Atualização pode substituir — usado tanto para saber onde salvar o arquivo
@@ -157,6 +181,12 @@ def _reprocessar_e_atualizar_cache(tipo: str) -> None:
         atualizar_cache("processos", processar_processos(settings.CAMINHO_PLANILHA_PROCESSOS))
     else:
         raise ValueError(f"Tipo desconhecido: {tipo}")
+
+    # "Clientes" agrega as 3 planilhas juntas — qualquer uma delas que for
+    # atualizada aqui pode mudar os dados de cliente, então reprocessa
+    # também (sem quebrar a atualização da planilha principal se as outras
+    # 2 ainda não existirem no servidor — _reprocessar_clientes já trata isso).
+    _reprocessar_clientes()
 
 
 @app.get("/health", tags=["Infraestrutura"])
@@ -368,6 +398,20 @@ def obter_dados_processos(usuario: Usuario = Depends(obter_usuario_autenticado))
     cliente(s), polo (autor x réu) e estado/cidade. Requer login.
     """
     dados = obter_cache("processos")
+    if dados is None:
+        raise HTTPException(status_code=503, detail="Dados ainda não sincronizados. Tente novamente em instantes.")
+    return dados
+
+
+@app.get("/api/clientes", tags=["Dados"])
+def obter_dados_clientes(usuario: Usuario = Depends(obter_usuario_autenticado)):
+    """
+    Visão agregada POR CLIENTE, juntando as 3 planilhas oficiais (Processos,
+    Processos Parados e Tarefas) pelo nome do cliente extraído das colunas de
+    partes de cada uma — não existe um cadastro de cliente próprio no
+    Projuris exportado, nem CPF/CNPJ. Requer login.
+    """
+    dados = obter_cache("clientes")
     if dados is None:
         raise HTTPException(status_code=503, detail="Dados ainda não sincronizados. Tente novamente em instantes.")
     return dados

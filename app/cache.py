@@ -23,6 +23,7 @@ _cache: dict = {
     "tarefas": None,
     "processos_parados": None,
     "processos": None,
+    "clientes": None,
     "ultima_sincronizacao": None,
 }
 
