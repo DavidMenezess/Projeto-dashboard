@@ -392,7 +392,12 @@ def _producao_do_ano(df: pd.DataFrame) -> dict:
     mensal = df.groupby("mes_num").agg(
         total=("Identificador da tarefa", "count"),
         concluidas=("Situação", lambda s: (s == "Concluída com sucesso").sum()),
-        pendentes=("Situação", lambda s: s.isin(["Pendente", "Em execução"]).sum()),
+        # "Pendente" e "Em execução" são situações diferentes e NÃO podem ser
+        # somadas aqui — antes eram, o que fazia o total de "pendentes" do
+        # gráfico não bater com o KPI "Pendentes" da aba Produção (que conta
+        # só Situação=="Pendente"). "Em execução" tem sua própria contagem.
+        pendentes=("Situação", lambda s: (s == "Pendente").sum()),
+        em_execucao=("Situação", lambda s: (s == "Em execução").sum()),
         canceladas=("Situação", lambda s: (s == "Cancelado").sum()),
         audiencias=("_is_audiencia", "sum"),
         atendimentos=("_is_atendimento", "sum"),
@@ -417,7 +422,10 @@ def _producao_do_ano(df: pd.DataFrame) -> dict:
         subconjunto = df[filtro]
         resp_situacao[responsavel] = {
             "concluidas": int((subconjunto["Situação"] == "Concluída com sucesso").sum()),
-            "pendentes": int(subconjunto["Situação"].isin(["Pendente", "Em execução"]).sum()),
+            # "Pendente" e "Em execução" contadas separadas (ver comentário em
+            # _producao_do_ano) — não podem ser somadas numa "pendentes" só.
+            "pendentes": int((subconjunto["Situação"] == "Pendente").sum()),
+            "em_execucao": int((subconjunto["Situação"] == "Em execução").sum()),
             "canceladas": int((subconjunto["Situação"] == "Cancelado").sum()),
             "total": int(len(subconjunto)),
         }
@@ -448,7 +456,7 @@ def _producao_do_ano(df: pd.DataFrame) -> dict:
     return {
         "total": int(len(df)),
         "situacao_counts": {k: int(v) for k, v in situacao_counts.items()},
-        "monthly": mensal[["mes_nome", "total", "concluidas", "pendentes", "canceladas", "audiencias", "atendimentos"]].to_dict("records"),
+        "monthly": mensal[["mes_nome", "total", "concluidas", "pendentes", "em_execucao", "canceladas", "audiencias", "atendimentos"]].to_dict("records"),
         "resp_counts": {k: int(v) for k, v in resp_counts.items()},
         "resp_situacao": resp_situacao,
         "tipo_counts": {k: int(v) for k, v in tipo_counts.items()},
@@ -463,42 +471,69 @@ def _producao_do_ano(df: pd.DataFrame) -> dict:
     }
 
 
+def _linha_pendencia(row, campo_dias: str) -> dict:
+    return {
+        "id": _texto_seguro(row["Identificador da tarefa"]),
+        "tipo": _texto_seguro(row["Tipo de tarefa"]),
+        "titulo": _texto_seguro(row["Título"]),
+        "responsavel": _texto_seguro(row["Responsáveis da tarefa"]),
+        "data_fatal": _texto_seguro(row["Data fatal"]),
+        "situacao": _texto_seguro(row["Situação"]),
+        campo_dias: int(row[campo_dias]),
+        "processo": _texto_seguro(row["Número do processo"]),
+        "orgao": _texto_seguro(row["Órgão"]),
+    }
+
+
+def _bloco_pendencias(df_situacao: pd.DataFrame, hoje: pd.Timestamp) -> dict:
+    """
+    Vencidas/a vencer de UMA situação só (Pendente OU Em execução) —
+    nunca as duas misturadas na mesma lista (ver comentário em
+    _calcular_pendencias, que chama esta função duas vezes, uma pra cada
+    situação).
+    """
+    vencidas = df_situacao[df_situacao["Data fatal_dt"] < hoje].copy()
+    vencidas["dias_atraso"] = (hoje - vencidas["Data fatal_dt"]).dt.days
+    vencidas = vencidas.sort_values("dias_atraso", ascending=False)
+
+    a_vencer = df_situacao[df_situacao["Data fatal_dt"] >= hoje].copy()
+    a_vencer["dias_restantes"] = (a_vencer["Data fatal_dt"] - hoje).dt.days
+    a_vencer = a_vencer.sort_values("dias_restantes").head(60)
+
+    return {
+        "overdue_list": [_linha_pendencia(r, "dias_atraso") for _, r in vencidas.iterrows()],
+        "upcoming_list": [_linha_pendencia(r, "dias_restantes") for _, r in a_vencer.iterrows()],
+        "total_atrasadas": int(len(vencidas)),
+        "total_pendentes": int(len(df_situacao)),
+    }
+
+
 def _calcular_pendencias(df: pd.DataFrame, hoje: pd.Timestamp) -> dict:
     """
     Pendências vencidas e a vencer — sempre relativas a HOJE, olhando a
     planilha inteira (todos os anos). Uma tarefa vencida de 2026 continua
     aparecendo aqui em 2027 enquanto não for resolvida; não faz sentido
     "escondê-la" só porque o ano mudou.
+
+    "Pendente" e "Em execução" são tratadas SEPARADAMENTE, nunca somadas
+    numa lista só — antes eram, e isso fazia o total dessas listas não
+    bater com o KPI "Pendentes" da aba Produção (que conta só
+    Situação=="Pendente"):
+      - as chaves de topo (overdue_list, upcoming_list, total_atrasadas,
+        total_pendentes) cobrem só Situação=="Pendente" — mantidas com
+        esses nomes por compatibilidade com o resto do dashboard, que já
+        lê essas chaves assim.
+      - "em_execucao" tem a mesma estrutura, para Situação=="Em execução"
+        — uma tarefa já em andamento mas com o prazo fatal vencido (ou
+        perto de vencer) não pode ficar invisível só por já estar "em
+        execução".
     """
-    pendentes = df[df["Situação"].isin(["Pendente", "Em execução"])].copy()
+    pendentes_df = df[df["Situação"] == "Pendente"].copy()
+    em_execucao_df = df[df["Situação"] == "Em execução"].copy()
 
-    vencidas = pendentes[pendentes["Data fatal_dt"] < hoje].copy()
-    vencidas["dias_atraso"] = (hoje - vencidas["Data fatal_dt"]).dt.days
-    vencidas = vencidas.sort_values("dias_atraso", ascending=False)
-
-    a_vencer = pendentes[pendentes["Data fatal_dt"] >= hoje].copy()
-    a_vencer["dias_restantes"] = (a_vencer["Data fatal_dt"] - hoje).dt.days
-    a_vencer = a_vencer.sort_values("dias_restantes").head(60)
-
-    def _linha_pendencia(row, campo_dias):
-        return {
-            "id": _texto_seguro(row["Identificador da tarefa"]),
-            "tipo": _texto_seguro(row["Tipo de tarefa"]),
-            "titulo": _texto_seguro(row["Título"]),
-            "responsavel": _texto_seguro(row["Responsáveis da tarefa"]),
-            "data_fatal": _texto_seguro(row["Data fatal"]),
-            "situacao": _texto_seguro(row["Situação"]),
-            campo_dias: int(row[campo_dias]),
-            "processo": _texto_seguro(row["Número do processo"]),
-            "orgao": _texto_seguro(row["Órgão"]),
-        }
-
-    return {
-        "overdue_list": [_linha_pendencia(r, "dias_atraso") for _, r in vencidas.iterrows()],
-        "upcoming_list": [_linha_pendencia(r, "dias_restantes") for _, r in a_vencer.iterrows()],
-        "total_atrasadas": int(len(vencidas)),
-        "total_pendentes": int(len(pendentes)),
-    }
+    resultado = _bloco_pendencias(pendentes_df, hoje)
+    resultado["em_execucao"] = _bloco_pendencias(em_execucao_df, hoje)
+    return resultado
 
 
 def _tipos_tarefa(df: pd.DataFrame) -> dict:
@@ -964,6 +999,75 @@ def processar_clientes(caminho_tarefas: str, caminho_processos_parados: str, cam
         "area_counts": {k: int(v) for k, v in area_counts.items()},
         "polo_counts": {k: int(v) for k, v in polo_counts.items()},
         "lista": lista_clientes,
+    }
+
+
+def processar_tarefas_por_cliente_periodo(caminho_arquivo: str, data_inicio: datetime, data_fim: datetime) -> dict:
+    """
+    Conta quantas tarefas foram CONCLUÍDAS para cada cliente dentro de um
+    período escolhido livremente (um dia, um mês, um ano — qualquer
+    intervalo), usando a "Data da conclusão" de cada tarefa — não é o mesmo
+    filtro de "Data prevista" usado no resto da Apresentação, porque aqui o
+    que importa é o trabalho de fato REALIZADO no período ("esse mês eu fiz
+    X tarefas pra tal cliente"), não o que estava agendado. Por isso, tarefa
+    sem "Data da conclusão" preenchida (ainda pendente ou em execução) não
+    entra na contagem.
+
+    Usa a mesma extração de nome de cliente das tarefas que processar_clientes
+    (colunas "Envolvidos do processo (partes ativas/passivas)", onde o nome
+    do cliente do escritório vem marcado com o sufixo "- Cliente").
+    """
+    df = _carregar_df_tarefas(caminho_arquivo)
+
+    inicio = pd.Timestamp(data_inicio)
+    fim = pd.Timestamp(data_fim)
+    df_periodo = df[
+        df["Data da conclusão_dt"].notna()
+        & (df["Data da conclusão_dt"] >= inicio)
+        & (df["Data da conclusão_dt"] <= fim)
+    ]
+
+    # Por linha (tarefa) — não por coluna — pra não contar a mesma tarefa duas
+    # vezes caso o nome do cliente apareça tanto em "partes ativas" quanto em
+    # "partes passivas" (não deveria acontecer, mas evita duplicidade se
+    # acontecer). Guarda também os dados da própria tarefa, pra dar pra
+    # mostrar quais tarefas foram essas, não só a contagem.
+    contagem: dict[str, dict] = {}
+    for _, row in df_periodo.iterrows():
+        nomes_da_linha: dict[str, str] = {}
+        for coluna in ["Envolvidos do processo (partes ativas)", "Envolvidos do processo (partes passivas)"]:
+            for nome in _extrai_nomes_clientes(row[coluna]):
+                chave = _normalizar_nome_cliente(nome)
+                if chave:
+                    nomes_da_linha[chave] = nome
+
+        if not nomes_da_linha:
+            continue
+
+        info_tarefa = {
+            "id": _texto_seguro(row["Identificador da tarefa"]),
+            "tipo": _texto_seguro(row["Tipo de tarefa"]),
+            "titulo": _texto_seguro(row["Título"]),
+            "responsavel": _texto_seguro(row["Responsáveis da tarefa"]),
+            "data_conclusao": _texto_seguro(row["Data da conclusão"]),
+            "processo": _texto_seguro(row["Número do processo"]),
+            "orgao": _texto_seguro(row["Órgão"]),
+        }
+
+        for chave, nome in nomes_da_linha.items():
+            if chave not in contagem:
+                contagem[chave] = {"nome": nome, "tarefas": 0, "tarefas_lista": []}
+            contagem[chave]["tarefas"] += 1
+            contagem[chave]["tarefas_lista"].append(info_tarefa)
+
+    lista = sorted(contagem.values(), key=lambda c: c["tarefas"], reverse=True)
+
+    return {
+        "inicio": inicio.strftime("%d/%m/%Y"),
+        "fim": fim.strftime("%d/%m/%Y"),
+        "total_tarefas_concluidas": int(len(df_periodo)),
+        "total_clientes_atendidos": len(lista),
+        "lista": lista,
     }
 
 

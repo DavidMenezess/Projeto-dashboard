@@ -24,6 +24,7 @@
 <script>
 // Variáveis globais com os dados vindos da API (preenchidas após o login)
 let DATA, STALLED, TASKTYPE, TASKLIST, INDICADORES, PROCESSOS, CLIENTES;
+let clientesOuvintesLigados = false;
 let categoriaTipoChartAtiva = 'processual';
 
 // ===== Navegação por abas (troca de painel, não rolagem) =====
@@ -380,6 +381,7 @@ function renderizarComparativo() {
     --red:#c97b5f;
     --purple:#9b8aa6;
     --teal:#6f93a6;
+    --gray:#7d7f8c;
     --gold-rgb:212,175,55;
   }
   *{box-sizing:border-box;}
@@ -411,6 +413,8 @@ function renderizarComparativo() {
   .kpi.red .value{color:var(--red);}
   .kpi.accent .value{color:var(--accent);}
   .kpi.purple .value{color:var(--purple);}
+  .kpi.teal .value{color:var(--teal);}
+  .kpi.gray .value{color:var(--gray);}
 
   .grid{
     display:grid;
@@ -1059,10 +1063,39 @@ function renderizarComparativo() {
   </div>
 </div>
 
-<div class="card full">
+<div class="card full" style="margin-bottom:16px;">
   <h2><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14.5"/></svg> Próximas pendências (prazo a vencer)</h2>
   <div class="table-wrap">
     <table id="upcomingTable">
+      <thead>
+        <tr><th>Tarefa</th><th>Tipo</th><th>Responsável</th><th>Processo</th><th>Órgão</th><th>Fatal</th><th>Situação</th><th>Faltam</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card full" id="cardExecVencido" style="margin-bottom:16px;">
+  <h2><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 3.6 1.9 18a2 2 0 0 0 1.7 3h16.8a2 2 0 0 0 1.7-3L13.7 3.6a2 2 0 0 0-3.4 0Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> Em execução — prazo fatal vencido (<span id="countAtrasadasExec"></span>)</h2>
+  <div class="subtitle" style="margin-bottom:14px;">Tarefas que já estão sendo trabalhadas, mas cujo prazo fatal já passou — separado das pendências acima porque "Pendente" e "Em execução" são situações diferentes.</div>
+  <div class="filters">
+    <input type="text" id="searchOverdueExec" placeholder="Buscar por processo, responsável, tipo...">
+    <select id="filterRespOverdueExec"><option value="">Todos os responsáveis</option></select>
+  </div>
+  <div class="table-wrap">
+    <table id="overdueTableExec">
+      <thead>
+        <tr><th>Tarefa</th><th>Tipo</th><th>Responsável</th><th>Processo</th><th>Órgão</th><th>Fatal</th><th>Situação</th><th>Atraso</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card full" id="cardExecProximo">
+  <h2><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14.5"/></svg> Em execução — próximas do prazo</h2>
+  <div class="table-wrap">
+    <table id="upcomingTableExec">
       <thead>
         <tr><th>Tarefa</th><th>Tipo</th><th>Responsável</th><th>Processo</th><th>Órgão</th><th>Fatal</th><th>Situação</th><th>Faltam</th></tr>
       </thead>
@@ -1410,6 +1443,74 @@ function upcomingRow(r){
 }
 const upcomingPager = makePaginatedTable('upcomingTable', upcomingRow, 15);
 upcomingPager.setData(DATA.upcoming_list);
+
+// ===== Em execução — prazo fatal vencido / próximas do prazo =====
+// Fonte: PENDENCIAS.em_execucao (situação "Em execução" separada de "Pendente",
+// ver comentário em _calcular_pendencias no backend) — lido direto do global
+// PENDENCIAS, sem passar pelo objeto DATA (que só carrega os campos de
+// "Pendente" por ano/período selecionado).
+const emExecucao = (PENDENCIAS && PENDENCIAS.em_execucao) || { overdue_list: [], upcoming_list: [] };
+
+function overdueExecRow(r){
+  return `
+    <tr>
+      <td>${r.id}</td>
+      <td>${r.tipo}</td>
+      <td>${r.responsavel}</td>
+      <td>${r.processo || '—'}</td>
+      <td>${r.orgao || '—'}</td>
+      <td>${r.data_fatal}</td>
+      <td><span class="badge execucao">${r.situacao}</span></td>
+      <td><span class="badge atraso">${r.dias_atraso}d</span></td>
+    </tr>
+  `;
+}
+const overduePagerExec = makePaginatedTable('overdueTableExec', overdueExecRow, 15);
+overduePagerExec.setData(emExecucao.overdue_list);
+document.getElementById('countAtrasadasExec').textContent = emExecucao.overdue_list.length;
+// O card só faz sentido mostrar quando existe alguma tarefa em execução
+// atrasada — vazio (0) é um bom sinal, mas não precisa ocupar espaço na tela.
+document.getElementById('cardExecVencido').style.display = emExecucao.overdue_list.length ? '' : 'none';
+
+// filters for overdue (em execução)
+const respSetExec = [...new Set(emExecucao.overdue_list.map(r=>r.responsavel))].sort();
+const selRespExec = document.getElementById('filterRespOverdueExec');
+respSetExec.forEach(r => {
+  const opt = document.createElement('option');
+  opt.value = r; opt.textContent = r;
+  selRespExec.appendChild(opt);
+});
+
+function applyOverdueFiltersExec(){
+  const q = document.getElementById('searchOverdueExec').value.toLowerCase();
+  const resp = selRespExec.value;
+  const filtered = emExecucao.overdue_list.filter(r => {
+    const matchesQ = !q || (r.id+r.tipo+r.responsavel+r.processo+r.orgao).toLowerCase().includes(q);
+    const matchesResp = !resp || r.responsavel === resp;
+    return matchesQ && matchesResp;
+  });
+  overduePagerExec.setData(filtered);
+}
+document.getElementById('searchOverdueExec').addEventListener('input', applyOverdueFiltersExec);
+selRespExec.addEventListener('change', applyOverdueFiltersExec);
+
+function upcomingExecRow(r){
+  return `
+  <tr>
+    <td>${r.id}</td>
+    <td>${r.tipo}</td>
+    <td>${r.responsavel}</td>
+    <td>${r.processo || '—'}</td>
+    <td>${r.orgao || '—'}</td>
+    <td>${r.data_fatal}</td>
+    <td><span class="badge execucao">${r.situacao}</span></td>
+    <td><span class="badge pendente">${r.dias_restantes}d</span></td>
+  </tr>
+`;
+}
+const upcomingPagerExec = makePaginatedTable('upcomingTableExec', upcomingExecRow, 15);
+upcomingPagerExec.setData(emExecucao.upcoming_list);
+document.getElementById('cardExecProximo').style.display = emExecucao.upcoming_list.length ? '' : 'none';
 }
 </script>
 
@@ -2490,6 +2591,32 @@ function selecionarEstadoMapaProcessos(nomeEstado) {
   </div>
 </div>
 
+<div class="card full" style="margin-bottom:32px;">
+  <h2><span class="dot" style="background:var(--teal)"></span>Tarefas por cliente no período</h2>
+  <div class="subtitle" style="margin-bottom:14px;">Quantas tarefas foram concluídas para cada cliente entre duas datas à sua escolha — dia, mês ou ano, livremente. Conta pela data em que a tarefa foi de fato concluída (tarefa ainda pendente ou em execução não entra).</div>
+  <div class="filters" style="align-items:flex-end;">
+    <div>
+      <label for="clientesTarefasPeriodoInicio" style="display:block; font-size:11.5px; color:var(--muted); margin-bottom:5px;">De</label>
+      <input type="date" id="clientesTarefasPeriodoInicio" style="background:var(--panel-2); border:1px solid var(--border); color:var(--text); border-radius:8px; padding:8px 10px; font-size:13px;">
+    </div>
+    <div>
+      <label for="clientesTarefasPeriodoFim" style="display:block; font-size:11.5px; color:var(--muted); margin-bottom:5px;">Até</label>
+      <input type="date" id="clientesTarefasPeriodoFim" style="background:var(--panel-2); border:1px solid var(--border); color:var(--text); border-radius:8px; padding:8px 10px; font-size:13px;">
+    </div>
+    <button class="login-btn" id="btnAplicarTarefasPeriodoClientes" type="button" style="width:auto; padding:9px 18px; font-size:13px;">Aplicar</button>
+    <span id="clientesTarefasPeriodoErro" style="font-size:12px; color:var(--red);"></span>
+  </div>
+  <div id="clientesTarefasPeriodoResumo" style="color:var(--muted); font-size:13px; margin:14px 0 10px;"></div>
+  <div class="table-wrap" style="max-height:420px;">
+    <table id="clientesTarefasPeriodoTable">
+      <thead>
+        <tr><th></th><th>Cliente</th><th>Tarefas concluídas no período</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</div>
+
 <script>
 /** Abre/fecha a linha de detalhe (processos e processos parados) de um cliente na tabela. */
 function toggleClienteDetalhe(id) {
@@ -2506,13 +2633,15 @@ function renderizarClientes() {
 
   // ===== KPIs =====
   const poloAtivoN = dados.polo_counts['Polo Ativo (Autor)'] || 0;
+  const poloPassivoN = dados.polo_counts['Polo Passivo (Réu)'] || 0;
   const totalProcessosClientes = Object.values(dados.polo_counts).reduce((a, b) => a + b, 0);
-  const percPoloAtivoClientes = totalProcessosClientes ? Math.round((poloAtivoN / totalProcessosClientes) * 100) : 0;
+  const percAutorClientes = totalProcessosClientes ? Math.round((poloAtivoN / totalProcessosClientes) * 100) : 0;
+  const percReuClientes = totalProcessosClientes ? Math.round((poloPassivoN / totalProcessosClientes) * 100) : 0;
 
   const kpisClientes = [
     { label: 'Clientes distintos', value: dados.total_clientes, cls: 'accent' },
-    { label: 'Com processo parado', value: dados.clientes_com_processo_parado, cls: 'red' },
-    { label: 'Processos em polo ativo (Autor)', valorFormatado: percPoloAtivoClientes + '%', cls: 'green' },
+    { label: '% dos processos em que somos Autor', valorFormatado: percAutorClientes + '%', cls: 'red' },
+    { label: '% dos processos em que somos Réu', valorFormatado: percReuClientes + '%', cls: 'gray' },
   ];
   document.getElementById('kpiGridClientes').innerHTML = kpisClientes.map((k, i) => `
     <div class="kpi ${k.cls}">
@@ -2630,6 +2759,90 @@ function renderizarClientes() {
   selPoloClientes.addEventListener('change', applyClientesFilters);
   selAreaClientes.addEventListener('change', applyClientesFilters);
   selParadoClientes.addEventListener('change', applyClientesFilters);
+
+  // ===== Tarefas por cliente no período (filtro de data livre) =====
+  const elTarefasInicio = document.getElementById('clientesTarefasPeriodoInicio');
+  const elTarefasFim = document.getElementById('clientesTarefasPeriodoFim');
+  if (periodoDisponivel && periodoDisponivel.min && periodoDisponivel.max) {
+    [elTarefasInicio, elTarefasFim].forEach(el => {
+      el.min = periodoDisponivel.min;
+      el.max = periodoDisponivel.max;
+    });
+  }
+
+  // Listener ligado só uma vez (o card inteiro é recriado a cada carregarDashboard,
+  // mas os elementos do DOM continuam os mesmos — sem essa trava, cada recarga
+  // empilharia mais um listener e disparia a busca várias vezes de uma vez).
+  if (!clientesOuvintesLigados) {
+    clientesOuvintesLigados = true;
+    document.getElementById('btnAplicarTarefasPeriodoClientes').addEventListener('click', aplicarTarefasPeriodoClientes);
+  }
+}
+
+async function aplicarTarefasPeriodoClientes() {
+  const elInicio = document.getElementById('clientesTarefasPeriodoInicio');
+  const elFim = document.getElementById('clientesTarefasPeriodoFim');
+  const elErro = document.getElementById('clientesTarefasPeriodoErro');
+  const elResumo = document.getElementById('clientesTarefasPeriodoResumo');
+  const btn = document.getElementById('btnAplicarTarefasPeriodoClientes');
+  elErro.textContent = '';
+
+  const inicio = elInicio.value;
+  const fim = elFim.value;
+  if (!inicio || !fim) {
+    elErro.textContent = 'Escolha as duas datas.';
+    return;
+  }
+  if (fim < inicio) {
+    elErro.textContent = 'A data final não pode ser antes da inicial.';
+    return;
+  }
+
+  btn.disabled = true;
+  const textoOriginalBtn = btn.textContent;
+  btn.textContent = 'Aplicando...';
+  try {
+    const resp = await fetchComAuth(`/api/clientes/tarefas-periodo?inicio=${inicio}&fim=${fim}`);
+    // Mesmo padrão de linha expansível da "Lista de clientes" (toggleClienteDetalhe,
+    // já definido mais acima) — clica na linha e abre a lista das tarefas de
+    // fato que compõem aquela contagem: tipo, título, responsável, processo,
+    // órgão e a data em que cada uma foi concluída.
+    function linhaTarefasPeriodo(c, idx) {
+      const detalheId = 'tarefasPeriodoDet' + idx;
+      const tarefas = c.tarefas_lista || [];
+      const detalheHtml = tarefas.length
+        ? tarefas.map(t => `
+            <div class="cliente-detalhe-item">
+              <strong>${t.id || '—'}</strong> — ${t.tipo || '—'}${t.titulo ? ' · ' + t.titulo : ''}<br>
+              <span class="cliente-detalhe-meta">Responsável: ${t.responsavel || '—'} · Processo: ${t.processo || '—'} · Órgão: ${t.orgao || '—'} · Concluída em ${t.data_conclusao || '—'}</span>
+            </div>`).join('')
+        : '<div class="cliente-detalhe-vazio">Nenhuma tarefa encontrada.</div>';
+      return `
+        <tr class="cliente-row" onclick="toggleClienteDetalhe('${detalheId}')">
+          <td><span class="cliente-expand-icon" id="${detalheId}-icon">▸</span></td>
+          <td>${c.nome}</td>
+          <td>${c.tarefas.toLocaleString('pt-BR')}</td>
+        </tr>
+        <tr class="cliente-detalhe-row" id="${detalheId}" style="display:none;">
+          <td colspan="3">
+            <div class="cliente-detalhe-secao"><h4>Tarefas concluídas no período</h4>${detalheHtml}</div>
+          </td>
+        </tr>
+      `;
+    }
+    document.querySelector('#clientesTarefasPeriodoTable tbody').innerHTML = resp.lista.length
+      ? resp.lista.map(linhaTarefasPeriodo).join('')
+      : '<tr><td colspan="3" style="text-align:center; color:var(--muted); padding:20px;">Nenhuma tarefa concluída nesse período</td></tr>';
+    elResumo.textContent = `${resp.inicio} a ${resp.fim}: ${resp.total_tarefas_concluidas.toLocaleString('pt-BR')} tarefa(s) concluída(s), para ${resp.total_clientes_atendidos.toLocaleString('pt-BR')} cliente(s).`;
+  } catch (erro) {
+    console.error(erro);
+    elErro.textContent = erro.message === 'SESSAO_EXPIRADA'
+      ? 'Sessão expirada — recarregue a página e faça login de novo.'
+      : 'Não foi possível buscar esse período: ' + erro.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = textoOriginalBtn;
+  }
 }
 </script>
 
@@ -3598,6 +3811,50 @@ const REGISTRO_SLIDES_APRESENTACAO = [
         </div>
       </div>
     `,
+  },
+  {
+    id: 'clientes', nome: 'Clientes',
+    html: (ctx) => {
+      // Esta aba (como "Panorama de Processos") não segue o filtro de
+      // ano/período da Apresentação — é a visão agregada por cliente
+      // (Processos + Processos Parados + Tarefas), lida direto da global
+      // CLIENTES, do mesmo jeito que a aba "Clientes" do dashboard já faz.
+      const cTotal = CLIENTES.total_clientes;
+      const totalProcessosClientes = Object.values(CLIENTES.polo_counts).reduce((a, b) => a + b, 0);
+      const poloAtivoNClientes = CLIENTES.polo_counts['Polo Ativo (Autor)'] || 0;
+      const poloPassivoNClientes = CLIENTES.polo_counts['Polo Passivo (Réu)'] || 0;
+      const percPoloAtivoClientes = totalProcessosClientes ? Math.round((poloAtivoNClientes / totalProcessosClientes) * 100) : 0;
+      const percPoloPassivoClientes = totalProcessosClientes ? Math.round((poloPassivoNClientes / totalProcessosClientes) * 100) : 0;
+
+      // "Não informado" às vezes é a maior fatia (dado que falta na planilha,
+      // não uma categoria de verdade) — não faz sentido apresentar isso pro
+      // cliente como "a área líder" (mesmo critério do slide "Processos").
+      const semNaoInformadoClientes = (contagem) => Object.entries(contagem || {}).filter(([nome]) => nome !== 'Não informado').sort((a, b) => b[1] - a[1]);
+      const topAreaClientes = semNaoInformadoClientes(CLIENTES.area_counts)[0] || ['—', 0];
+
+      // CLIENTES.lista já vem ordenada por total de processos (ver
+      // processar_clientes), então o primeiro item é o maior cliente.
+      const topCliente = CLIENTES.lista[0] || null;
+
+      return `
+        <div class="apresentacao-slide">
+          <div class="slide-titulo">Clientes</div>
+          <div class="slide-subtitulo">Visão agregada por cliente — Processos, Processos Parados e Tarefas</div>
+          <div class="apresentacao-kpi-grid">
+            <div class="apresentacao-kpi"><div class="valor" style="color:var(--accent)">${cTotal.toLocaleString('pt-BR')}</div><div class="rotulo">Clientes distintos</div></div>
+            <div class="apresentacao-kpi"><div class="valor" style="color:var(--red)">${percPoloAtivoClientes}%</div><div class="rotulo">% dos processos em que somos Autor</div></div>
+            <div class="apresentacao-kpi"><div class="valor" style="color:var(--gray)">${percPoloPassivoClientes}%</div><div class="rotulo">% dos processos em que somos Réu</div></div>
+            <div class="apresentacao-kpi"><div class="valor" style="color:var(--teal)">${topAreaClientes[1].toLocaleString('pt-BR')}</div><div class="rotulo">Em ${topAreaClientes[0]} (área líder)</div></div>
+            <div class="apresentacao-kpi"><div class="valor" style="color:var(--amber)">${topCliente ? topCliente.total_processos.toLocaleString('pt-BR') : '—'}</div><div class="rotulo">${topCliente ? 'Processos de ' + topCliente.nome + ' (maior cliente)' : 'Maior cliente'}</div></div>
+          </div>
+          <div class="slide-insight" style="max-width:1000px; margin-top:28px;">
+            <span class="icone">💡</span>
+            <span>O escritório atende <b>${cTotal.toLocaleString('pt-BR')}</b> clientes distintos, com maior concentração em <b>${topAreaClientes[0]}</b>.
+            Somos Autor em <b>${percPoloAtivoClientes}%</b> dos processos e Réu em <b>${percPoloPassivoClientes}%</b>.</span>
+          </div>
+        </div>
+      `;
+    },
   },
   {
     id: 'comparativo-mensal', nome: 'Comparativo mensal',

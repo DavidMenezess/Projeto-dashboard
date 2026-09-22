@@ -11,6 +11,7 @@ Ponto de entrada da API. Define as rotas:
   GET  /api/processos-parados   -> dados da seção "Processos Parados" (protegida)
   GET  /api/processos           -> cadastro geral de processos (protegida)
   GET  /api/clientes            -> visão agregada por cliente, juntando as 3 planilhas (protegida)
+  GET  /api/clientes/tarefas-periodo -> tarefas concluídas por cliente num período livre (protegida)
   POST /api/atualizar-planilha  -> substitui uma das 3 planilhas oficiais por um arquivo
                                     enviado pelo usuário (tela "Atualização", protegida)
   GET  /health                  -> checagem simples de saúde do serviço
@@ -39,7 +40,8 @@ from app.auth import (
 )
 from app.data_processor import (
     processar_tarefas, processar_processos_parados, processar_tarefas_periodo, processar_processos,
-    processar_clientes, validar_planilha_atualizacao, CONFIG_PLANILHAS_ATUALIZACAO,
+    processar_clientes, processar_tarefas_por_cliente_periodo,
+    validar_planilha_atualizacao, CONFIG_PLANILHAS_ATUALIZACAO,
 )
 from app.cache import atualizar_cache, obter_cache, obter_ultima_sincronizacao
 
@@ -415,6 +417,34 @@ def obter_dados_clientes(usuario: Usuario = Depends(obter_usuario_autenticado)):
     if dados is None:
         raise HTTPException(status_code=503, detail="Dados ainda não sincronizados. Tente novamente em instantes.")
     return dados
+
+
+@app.get("/api/clientes/tarefas-periodo", tags=["Dados"])
+def obter_tarefas_por_cliente_periodo(
+    inicio: str,
+    fim: str,
+    usuario: Usuario = Depends(obter_usuario_autenticado),
+):
+    """
+    Quantas tarefas foram CONCLUÍDAS (pela "Data da conclusão") para cada
+    cliente, dentro de um período escolhido livremente — 'inicio' e 'fim' no
+    formato AAAA-MM-DD (o mesmo que o input type="date" do navegador manda).
+    Sempre lê a planilha de Tarefas do disco na hora (não usa o cache de 10
+    em 10 minutos), então já reflete a última sincronização. Requer login.
+    """
+    try:
+        data_inicio = datetime.strptime(inicio, "%Y-%m-%d")
+        data_fim = datetime.strptime(fim, "%Y-%m-%d")
+    except ValueError:
+        raise HTTPException(status_code=422, detail="As datas devem estar no formato AAAA-MM-DD.")
+
+    if data_fim < data_inicio:
+        raise HTTPException(status_code=422, detail="A data final não pode ser anterior à data inicial.")
+
+    try:
+        return processar_tarefas_por_cliente_periodo(settings.CAMINHO_PLANILHA_TAREFAS, data_inicio, data_fim)
+    except FileNotFoundError:
+        raise HTTPException(status_code=503, detail="Planilha de tarefas ainda não foi carregada no servidor.")
 
 
 @app.post("/api/atualizar-planilha", tags=["Dados"])
