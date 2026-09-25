@@ -57,6 +57,13 @@ app = FastAPI(
     title="API — Dashboard Directus Advocacia e Consultoria",
     description="Fornece os dados de produção e processos parados ao dashboard, com login por Nome e Sobrenome.",
     version="1.2.0",
+    # Em produção (HABILITAR_DOCS=false no .env), desliga a documentação
+    # interativa — sem isso, qualquer pessoa sem login consegue ver o mapa
+    # completo das rotas da API em /docs. Continua ligada por padrão no
+    # desenvolvimento local, onde é útil pra testar.
+    docs_url="/docs" if settings.HABILITAR_DOCS else None,
+    redoc_url="/redoc" if settings.HABILITAR_DOCS else None,
+    openapi_url="/openapi.json" if settings.HABILITAR_DOCS else None,
 )
 
 # CORS: só os endereços listados em ORIGENS_PERMITIDAS (.env) podem chamar esta API

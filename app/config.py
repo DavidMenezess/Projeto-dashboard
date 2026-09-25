@@ -28,6 +28,15 @@ class Settings(BaseSettings):
     # --- CORS ---
     ORIGENS_PERMITIDAS: str = "http://localhost:3000"
 
+    # --- Documentação interativa da API (/docs, /redoc, /openapi.json) ---
+    # Fica ligada por padrão porque é útil durante o desenvolvimento (testar
+    # rota sem precisar escrever código). Em produção, qualquer pessoa sem
+    # login conseguiria abrir /docs e ver o mapa completo de todas as rotas
+    # da API — não dá pra roubar dado só com isso (ainda precisa de um token
+    # válido), mas facilita a vida de quem for tentar atacar. Coloque
+    # HABILITAR_DOCS=false no .env de produção pra desligar.
+    HABILITAR_DOCS: bool = True
+
     # --- Apenas para testes locais com planilhas antigas ---
     # Se preenchida (formato DD/MM/AAAA), a API usa essa data como "hoje" ao
     # calcular prazos e o filtro de "90 a 120 dias parado", em vez da data
