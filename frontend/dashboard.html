@@ -27,6 +27,27 @@ let DATA, STALLED, TASKTYPE, TASKLIST, INDICADORES, PROCESSOS, CLIENTES;
 let clientesOuvintesLigados = false;
 let categoriaTipoChartAtiva = 'processual';
 
+/**
+ * Escapa texto antes de colocar dentro de HTML (innerHTML). Os dados que
+ * preenchem as tabelas (nome de cliente, título de tarefa, responsável,
+ * etc.) vêm da planilha do Projuris — e qualquer usuário logado pode trocar
+ * essa planilha pela tela de Atualização. Sem isso, um valor como
+ * "<script>" num nome de cliente seria interpretado como código pelo
+ * navegador de quem estivesse olhando o dashboard, em vez de aparecer como
+ * texto. Usar sempre que um valor vindo dos dados for inserido via
+ * innerHTML/template string — não é necessário para valores fixos escritos
+ * no próprio código, nem para números.
+ */
+function esc(valor) {
+  if (valor === null || valor === undefined) return '';
+  return String(valor)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 // ===== Navegação por abas (troca de painel, não rolagem) =====
 const mapaPaineis = {
   'section-producao': 'painel-producao',
@@ -1389,14 +1410,14 @@ criarGrafico('grupoChart', {
 function overdueRow(r){
   return `
     <tr>
-      <td>${r.id}</td>
-      <td>${r.tipo}</td>
-      <td>${r.responsavel}</td>
-      <td>${r.processo || '—'}</td>
-      <td>${r.orgao || '—'}</td>
-      <td>${r.data_fatal}</td>
-      <td><span class="badge ${r.situacao==='Pendente'?'pendente':'execucao'}">${r.situacao}</span></td>
-      <td><span class="badge atraso">${r.dias_atraso}d</span></td>
+      <td>${esc(r.id)}</td>
+      <td>${esc(r.tipo)}</td>
+      <td>${esc(r.responsavel)}</td>
+      <td>${esc(r.processo) || '—'}</td>
+      <td>${esc(r.orgao) || '—'}</td>
+      <td>${esc(r.data_fatal)}</td>
+      <td><span class="badge ${r.situacao==='Pendente'?'pendente':'execucao'}">${esc(r.situacao)}</span></td>
+      <td><span class="badge atraso">${esc(r.dias_atraso)}d</span></td>
     </tr>
   `;
 }
@@ -1430,14 +1451,14 @@ selResp.addEventListener('change', applyOverdueFilters);
 function upcomingRow(r){
   return `
   <tr>
-    <td>${r.id}</td>
-    <td>${r.tipo}</td>
-    <td>${r.responsavel}</td>
-    <td>${r.processo || '—'}</td>
-    <td>${r.orgao || '—'}</td>
-    <td>${r.data_fatal}</td>
-    <td><span class="badge ${r.situacao==='Pendente'?'pendente':'execucao'}">${r.situacao}</span></td>
-    <td><span class="badge pendente">${r.dias_restantes}d</span></td>
+    <td>${esc(r.id)}</td>
+    <td>${esc(r.tipo)}</td>
+    <td>${esc(r.responsavel)}</td>
+    <td>${esc(r.processo) || '—'}</td>
+    <td>${esc(r.orgao) || '—'}</td>
+    <td>${esc(r.data_fatal)}</td>
+    <td><span class="badge ${r.situacao==='Pendente'?'pendente':'execucao'}">${esc(r.situacao)}</span></td>
+    <td><span class="badge pendente">${esc(r.dias_restantes)}d</span></td>
   </tr>
 `;
 }
@@ -1454,14 +1475,14 @@ const emExecucao = (PENDENCIAS && PENDENCIAS.em_execucao) || { overdue_list: [],
 function overdueExecRow(r){
   return `
     <tr>
-      <td>${r.id}</td>
-      <td>${r.tipo}</td>
-      <td>${r.responsavel}</td>
-      <td>${r.processo || '—'}</td>
-      <td>${r.orgao || '—'}</td>
-      <td>${r.data_fatal}</td>
-      <td><span class="badge execucao">${r.situacao}</span></td>
-      <td><span class="badge atraso">${r.dias_atraso}d</span></td>
+      <td>${esc(r.id)}</td>
+      <td>${esc(r.tipo)}</td>
+      <td>${esc(r.responsavel)}</td>
+      <td>${esc(r.processo) || '—'}</td>
+      <td>${esc(r.orgao) || '—'}</td>
+      <td>${esc(r.data_fatal)}</td>
+      <td><span class="badge execucao">${esc(r.situacao)}</span></td>
+      <td><span class="badge atraso">${esc(r.dias_atraso)}d</span></td>
     </tr>
   `;
 }
@@ -1497,14 +1518,14 @@ selRespExec.addEventListener('change', applyOverdueFiltersExec);
 function upcomingExecRow(r){
   return `
   <tr>
-    <td>${r.id}</td>
-    <td>${r.tipo}</td>
-    <td>${r.responsavel}</td>
-    <td>${r.processo || '—'}</td>
-    <td>${r.orgao || '—'}</td>
-    <td>${r.data_fatal}</td>
-    <td><span class="badge execucao">${r.situacao}</span></td>
-    <td><span class="badge pendente">${r.dias_restantes}d</span></td>
+    <td>${esc(r.id)}</td>
+    <td>${esc(r.tipo)}</td>
+    <td>${esc(r.responsavel)}</td>
+    <td>${esc(r.processo) || '—'}</td>
+    <td>${esc(r.orgao) || '—'}</td>
+    <td>${esc(r.data_fatal)}</td>
+    <td><span class="badge execucao">${esc(r.situacao)}</span></td>
+    <td><span class="badge pendente">${esc(r.dias_restantes)}d</span></td>
   </tr>
 `;
 }
@@ -1619,16 +1640,16 @@ function renderizarBlocoParados(dados, sufixo) {
     return `
       <tr>
         <td>${POLO_BADGE[r.polo] || '—'}</td>
-        <td>${r.processo || '—'}</td>
-        <td>${r.representando || '—'}</td>
-        <td>${r.assunto || '—'}</td>
-        <td>${r.orgao || '—'}</td>
-        <td>${r.area || '—'}</td>
-        <td><span class="badge ${r.situacao==='Ativo'?'execucao':'pendente'}">${r.situacao}</span></td>
-        <td>${r.responsavel || '—'}</td>
-        <td>${r.data_mov || '—'}</td>
-        <td><span class="badge atraso">${r.dias_parado ?? '—'}d</span></td>
-        ${sufixo === 'Cronico' ? `<td>${r.idade_processo_anos !== null ? r.idade_processo_anos + ' anos' : '—'}</td>` : ''}
+        <td>${esc(r.processo) || '—'}</td>
+        <td>${esc(r.representando) || '—'}</td>
+        <td>${esc(r.assunto) || '—'}</td>
+        <td>${esc(r.orgao) || '—'}</td>
+        <td>${esc(r.area) || '—'}</td>
+        <td><span class="badge ${r.situacao==='Ativo'?'execucao':'pendente'}">${esc(r.situacao)}</span></td>
+        <td>${esc(r.responsavel) || '—'}</td>
+        <td>${esc(r.data_mov) || '—'}</td>
+        <td><span class="badge atraso">${esc(r.dias_parado ?? '—')}d</span></td>
+        ${sufixo === 'Cronico' ? `<td>${r.idade_processo_anos !== null ? esc(r.idade_processo_anos) + ' anos' : '—'}</td>` : ''}
       </tr>
     `;
   }
@@ -1813,14 +1834,14 @@ const sitBadgeClass = {
 function taskListRow(r){
   return `
     <tr>
-      <td>${r.responsavel}</td>
-      <td><span class="badge ${catBadgeClass[r.categoria]||'pendente'}">${r.categoria}</span></td>
-      <td>${r.tipo || '—'}</td>
-      <td>${r.titulo || '—'}</td>
-      <td>${r.processo || '—'}</td>
-      <td><span class="badge ${sitBadgeClass[r.situacao]||'pendente'}">${r.situacao || '—'}</span></td>
-      <td>${r.data_prevista || '—'}</td>
-      <td>${r.data_conclusao || '—'}</td>
+      <td>${esc(r.responsavel)}</td>
+      <td><span class="badge ${catBadgeClass[r.categoria]||'pendente'}">${esc(r.categoria)}</span></td>
+      <td>${esc(r.tipo) || '—'}</td>
+      <td>${esc(r.titulo) || '—'}</td>
+      <td>${esc(r.processo) || '—'}</td>
+      <td><span class="badge ${sitBadgeClass[r.situacao]||'pendente'}">${esc(r.situacao) || '—'}</span></td>
+      <td>${esc(r.data_prevista) || '—'}</td>
+      <td>${esc(r.data_conclusao) || '—'}</td>
     </tr>
   `;
 }
@@ -2372,16 +2393,16 @@ function renderizarProcessos() {
     return `
       <tr>
         <td>${POLO_BADGE_PROCESSOS[p.polo] || '—'}</td>
-        <td>${p.identificador || '—'}</td>
-        <td>${p.cliente || '—'}</td>
-        <td style="max-width:260px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${(p.assunto || '').replace(/"/g, '&quot;')}">${p.assunto || '—'}</td>
-        <td>${p.situacao || '—'}</td>
-        <td>${p.justica || '—'}</td>
-        <td>${p.area || '—'}</td>
-        <td>${[p.estado, p.cidade].filter(Boolean).join(' / ') || '—'}</td>
-        <td>${p.data_distribuicao || '—'}</td>
+        <td>${esc(p.identificador) || '—'}</td>
+        <td>${esc(p.cliente) || '—'}</td>
+        <td style="max-width:260px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${esc(p.assunto)}">${esc(p.assunto) || '—'}</td>
+        <td>${esc(p.situacao) || '—'}</td>
+        <td>${esc(p.justica) || '—'}</td>
+        <td>${esc(p.area) || '—'}</td>
+        <td>${esc([p.estado, p.cidade].filter(Boolean).join(' / ')) || '—'}</td>
+        <td>${esc(p.data_distribuicao) || '—'}</td>
         <td>${p.valor_causa_suspeito ? `<span title="Valor fora do padrão — parece erro de digitação no Projuris." style="color:var(--red); cursor:help;">⚠️ ${fmtMoedaProcessos(p.valor_causa)}</span>` : fmtMoedaProcessos(p.valor_causa)}</td>
-        <td>${p.data_ultimo_andamento || '—'}</td>
+        <td>${esc(p.data_ultimo_andamento) || '—'}</td>
       </tr>
     `;
   }
@@ -2391,19 +2412,19 @@ function renderizarProcessos() {
 
   const selSitProcessos = document.getElementById('filterSitProcessos');
   selSitProcessos.innerHTML = '<option value="">Todas as situações</option>' +
-    [...new Set(dados.lista.map(p => p.situacao).filter(Boolean))].sort().map(s => `<option value="${s}">${s}</option>`).join('');
+    [...new Set(dados.lista.map(p => p.situacao).filter(Boolean))].sort().map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join('');
 
   const selJusticaProcessos = document.getElementById('filterJusticaProcessos');
   selJusticaProcessos.innerHTML = '<option value="">Todas as justiças</option>' +
-    [...new Set(dados.lista.map(p => p.justica).filter(Boolean))].sort().map(j => `<option value="${j}">${j}</option>`).join('');
+    [...new Set(dados.lista.map(p => p.justica).filter(Boolean))].sort().map(j => `<option value="${esc(j)}">${esc(j)}</option>`).join('');
 
   const selAreaProcessos = document.getElementById('filterAreaProcessos');
   selAreaProcessos.innerHTML = '<option value="">Todas as áreas</option>' +
-    [...new Set(dados.lista.map(p => p.area).filter(Boolean))].sort().map(a => `<option value="${a}">${a}</option>`).join('');
+    [...new Set(dados.lista.map(p => p.area).filter(Boolean))].sort().map(a => `<option value="${esc(a)}">${esc(a)}</option>`).join('');
 
   const selPoloProcessos = document.getElementById('filterPoloProcessos');
   selPoloProcessos.innerHTML = '<option value="">Autor e Réu</option>' +
-    [...new Set(dados.lista.map(p => p.polo).filter(Boolean))].map(p => `<option value="${p}">${p}</option>`).join('');
+    [...new Set(dados.lista.map(p => p.polo).filter(Boolean))].map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join('');
 
   const inputBuscaProcessos = document.getElementById('searchProcessos');
   function applyProcessosFilters() {
@@ -2692,29 +2713,29 @@ function renderizarClientes() {
     const processosHtml = c.processos.length
       ? c.processos.map(p => `
           <div class="cliente-detalhe-item">
-            <strong>${p.identificador || '—'}</strong> — ${p.assunto || '—'}<br>
-            <span class="cliente-detalhe-meta">${p.situacao || '—'} · ${p.justica || '—'} · ${p.instancia || '—'} · ${p.area || '—'} · ${[p.estado, p.cidade].filter(Boolean).join('/') || '—'} · Distribuído em ${p.data_distribuicao || '—'} · Último andamento: ${p.data_ultimo_andamento || '—'}</span>
+            <strong>${esc(p.identificador) || '—'}</strong> — ${esc(p.assunto) || '—'}<br>
+            <span class="cliente-detalhe-meta">${esc(p.situacao) || '—'} · ${esc(p.justica) || '—'} · ${esc(p.instancia) || '—'} · ${esc(p.area) || '—'} · ${esc([p.estado, p.cidade].filter(Boolean).join('/')) || '—'} · Distribuído em ${esc(p.data_distribuicao) || '—'} · Último andamento: ${esc(p.data_ultimo_andamento) || '—'}</span>
           </div>`).join('')
       : '<div class="cliente-detalhe-vazio">Nenhum processo cadastrado.</div>';
     const paradosHtml = c.processos_parados.length
       ? c.processos_parados.map(p => `
           <div class="cliente-detalhe-item">
-            <strong>${p.processo || '—'}</strong> — ${p.assunto || '—'}<br>
-            <span class="cliente-detalhe-meta">${p.situacao || '—'} · Órgão: ${p.orgao || '—'} · ${p.area || '—'} · Último movimento: ${p.data_mov || '—'}</span>
+            <strong>${esc(p.processo) || '—'}</strong> — ${esc(p.assunto) || '—'}<br>
+            <span class="cliente-detalhe-meta">${esc(p.situacao) || '—'} · Órgão: ${esc(p.orgao) || '—'} · ${esc(p.area) || '—'} · Último movimento: ${esc(p.data_mov) || '—'}</span>
           </div>`).join('')
       : '';
     return `
       <tr class="cliente-row" onclick="toggleClienteDetalhe('${detalheId}')">
         <td><span class="cliente-expand-icon" id="${detalheId}-icon">▸</span></td>
-        <td>${c.nome}</td>
+        <td>${esc(c.nome)}</td>
         <td>${POLO_BADGE_CLIENTES[c.polo] || '—'}</td>
         <td>${c.total_processos}</td>
         <td>${c.total_processos_parados || '—'}</td>
         <td>${c.total_tarefas || '—'}</td>
-        <td>${c.area_principal || '—'}</td>
-        <td>${c.situacao_predominante || '—'}</td>
-        <td>${(c.estados || []).join(', ') || '—'}</td>
-        <td>${c.ultimo_andamento || '—'}</td>
+        <td>${esc(c.area_principal) || '—'}</td>
+        <td>${esc(c.situacao_predominante) || '—'}</td>
+        <td>${esc((c.estados || []).join(', ')) || '—'}</td>
+        <td>${esc(c.ultimo_andamento) || '—'}</td>
       </tr>
       <tr class="cliente-detalhe-row" id="${detalheId}" style="display:none;">
         <td colspan="10">
@@ -2731,11 +2752,11 @@ function renderizarClientes() {
 
   const selPoloClientes = document.getElementById('filterPoloClientes');
   selPoloClientes.innerHTML = '<option value="">Autor e Réu</option>' +
-    [...new Set(dados.lista.map(c => c.polo).filter(Boolean))].map(p => `<option value="${p}">${p}</option>`).join('');
+    [...new Set(dados.lista.map(c => c.polo).filter(Boolean))].map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join('');
 
   const selAreaClientes = document.getElementById('filterAreaClientes');
   selAreaClientes.innerHTML = '<option value="">Todas as áreas</option>' +
-    [...new Set(dados.lista.map(c => c.area_principal).filter(Boolean))].sort().map(a => `<option value="${a}">${a}</option>`).join('');
+    [...new Set(dados.lista.map(c => c.area_principal).filter(Boolean))].sort().map(a => `<option value="${esc(a)}">${esc(a)}</option>`).join('');
 
   const selParadoClientes = document.getElementById('filterParadoClientes');
 
@@ -2813,14 +2834,14 @@ async function aplicarTarefasPeriodoClientes() {
       const detalheHtml = tarefas.length
         ? tarefas.map(t => `
             <div class="cliente-detalhe-item">
-              <strong>${t.id || '—'}</strong> — ${t.tipo || '—'}${t.titulo ? ' · ' + t.titulo : ''}<br>
-              <span class="cliente-detalhe-meta">Responsável: ${t.responsavel || '—'} · Processo: ${t.processo || '—'} · Órgão: ${t.orgao || '—'} · Concluída em ${t.data_conclusao || '—'}</span>
+              <strong>${esc(t.id) || '—'}</strong> — ${esc(t.tipo) || '—'}${t.titulo ? ' · ' + esc(t.titulo) : ''}<br>
+              <span class="cliente-detalhe-meta">Responsável: ${esc(t.responsavel) || '—'} · Processo: ${esc(t.processo) || '—'} · Órgão: ${esc(t.orgao) || '—'} · Concluída em ${esc(t.data_conclusao) || '—'}</span>
             </div>`).join('')
         : '<div class="cliente-detalhe-vazio">Nenhuma tarefa encontrada.</div>';
       return `
         <tr class="cliente-row" onclick="toggleClienteDetalhe('${detalheId}')">
           <td><span class="cliente-expand-icon" id="${detalheId}-icon">▸</span></td>
-          <td>${c.nome}</td>
+          <td>${esc(c.nome)}</td>
           <td>${c.tarefas.toLocaleString('pt-BR')}</td>
         </tr>
         <tr class="cliente-detalhe-row" id="${detalheId}" style="display:none;">
@@ -3513,7 +3534,7 @@ const REGISTRO_SLIDES_APRESENTACAO = [
           <div class="slide-col-texto" style="flex:1;">
             <div class="slide-lista-numerica">
               ${ctx.situacaoDetalhada.map(([nome, valor, pct]) => `
-                <div class="item"><span class="nome">${nome}</span><span class="num">${valor.toLocaleString('pt-BR')} <span style="font-size:15px; color:var(--muted); font-weight:400;">(${pct}%)</span></span></div>
+                <div class="item"><span class="nome">${esc(nome)}</span><span class="num">${valor.toLocaleString('pt-BR')} <span style="font-size:15px; color:var(--muted); font-weight:400;">(${pct}%)</span></span></div>
               `).join('')}
             </div>
           </div>
@@ -3572,14 +3593,14 @@ const REGISTRO_SLIDES_APRESENTACAO = [
           <div class="slide-col-texto">
             <div class="slide-lista-numerica">
               ${ctx.respTop8.map(([nome, valor]) => `
-                <div class="item"><span class="nome">${nome}</span><span class="num">${valor.toLocaleString('pt-BR')} <span style="font-size:14px; color:var(--muted); font-weight:400;">(${Math.round(valor/ctx.totalTarefas*100)}%)</span></span></div>
+                <div class="item"><span class="nome">${esc(nome)}</span><span class="num">${valor.toLocaleString('pt-BR')} <span style="font-size:14px; color:var(--muted); font-weight:400;">(${Math.round(valor/ctx.totalTarefas*100)}%)</span></span></div>
               `).join('')}
             </div>
           </div>
         </div>
         <div class="slide-insight" style="max-width:1100px; margin-top:20px;">
           <span class="icone">🏆</span>
-          <span><b>${ctx.topResponsavel[0]}</b> lidera com ${ctx.topResponsavel[1].toLocaleString('pt-BR')} tarefas (<b>${ctx.percTopResponsavel}%</b> do total).
+          <span><b>${esc(ctx.topResponsavel[0])}</b> lidera com ${ctx.topResponsavel[1].toLocaleString('pt-BR')} tarefas (<b>${ctx.percTopResponsavel}%</b> do total).
           As 3 pessoas mais produtivas juntas respondem por <b>${ctx.percTop3Resp}%</b> de tudo que foi feito no ${periodoRotuloPalavra()} —
           ${ctx.percTop3Resp > 50 ? 'uma concentração alta, que vale observar para não sobrecarregar poucas pessoas.' : 'uma distribuição relativamente equilibrada entre a equipe.'}</span>
         </div>
@@ -3596,14 +3617,14 @@ const REGISTRO_SLIDES_APRESENTACAO = [
           <div class="slide-col-texto">
             <div class="slide-lista-numerica">
               ${ctx.tipoOrdenadosProcessual.slice(0, 8).map(([nome, valor]) => `
-                <div class="item"><span class="nome">${nome}</span><span class="num">${valor.toLocaleString('pt-BR')}</span></div>
+                <div class="item"><span class="nome">${esc(nome)}</span><span class="num">${valor.toLocaleString('pt-BR')}</span></div>
               `).join('')}
             </div>
           </div>
         </div>
         <div class="slide-insight" style="max-width:1100px; margin-top:20px;">
           <span class="icone">📋</span>
-          <span><b>"${ctx.topTipoProcessual[0]}"</b> é o tipo de tarefa processual mais comum (${ctx.topTipoProcessual[1].toLocaleString('pt-BR')}, <b>${ctx.percTopTipoProcessual}%</b> das tarefas processuais).
+          <span><b>"${esc(ctx.topTipoProcessual[0])}"</b> é o tipo de tarefa processual mais comum (${ctx.topTipoProcessual[1].toLocaleString('pt-BR')}, <b>${ctx.percTopTipoProcessual}%</b> das tarefas processuais).
           Os 3 tipos mais frequentes juntos somam <b>${ctx.percTop3TipoProcessual}%</b> de toda a produção processual do ${periodoRotuloPalavra()}.</span>
         </div>
       </div>
@@ -3619,14 +3640,14 @@ const REGISTRO_SLIDES_APRESENTACAO = [
           <div class="slide-col-texto">
             <div class="slide-lista-numerica">
               ${ctx.tipoOrdenadosAtendimento.slice(0, 8).map(([nome, valor]) => `
-                <div class="item"><span class="nome">${nome}</span><span class="num">${valor.toLocaleString('pt-BR')}</span></div>
+                <div class="item"><span class="nome">${esc(nome)}</span><span class="num">${valor.toLocaleString('pt-BR')}</span></div>
               `).join('')}
             </div>
           </div>
         </div>
         <div class="slide-insight" style="max-width:1100px; margin-top:20px;">
           <span class="icone">📋</span>
-          <span><b>"${ctx.topTipoAtendimento[0]}"</b> é o tipo de tarefa administrativa mais comum (${ctx.topTipoAtendimento[1].toLocaleString('pt-BR')}, <b>${ctx.percTopTipoAtendimento}%</b> das tarefas administrativas).
+          <span><b>"${esc(ctx.topTipoAtendimento[0])}"</b> é o tipo de tarefa administrativa mais comum (${ctx.topTipoAtendimento[1].toLocaleString('pt-BR')}, <b>${ctx.percTopTipoAtendimento}%</b> das tarefas administrativas).
           Os 3 tipos mais frequentes juntos somam <b>${ctx.percTop3TipoAtendimento}%</b> de toda a produção administrativa do ${periodoRotuloPalavra()}.</span>
         </div>
       </div>
@@ -3693,14 +3714,14 @@ const REGISTRO_SLIDES_APRESENTACAO = [
           <div class="slide-col-texto">
             <div class="slide-lista-numerica">
               ${ctx.areaDireitoOrdenados.slice(0, 8).map(([nome, valor]) => `
-                <div class="item"><span class="nome">${nome}</span><span class="num">${valor.toLocaleString('pt-BR')}</span></div>
+                <div class="item"><span class="nome">${esc(nome)}</span><span class="num">${valor.toLocaleString('pt-BR')}</span></div>
               `).join('')}
             </div>
           </div>
         </div>
         <div class="slide-insight" style="max-width:1100px; margin-top:20px;">
           <span class="icone">⚖️</span>
-          <span><b>${ctx.topArea[0]}</b> é a área com mais volume de trabalho, com ${ctx.topArea[1].toLocaleString('pt-BR')} tarefas —
+          <span><b>${esc(ctx.topArea[0])}</b> é a área com mais volume de trabalho, com ${ctx.topArea[1].toLocaleString('pt-BR')} tarefas —
           <b>${ctx.percTopArea}%</b> de tudo que teve área identificada.</span>
         </div>
       </div>
@@ -3722,7 +3743,7 @@ const REGISTRO_SLIDES_APRESENTACAO = [
               <div style="font-size:32px; font-weight:800; color:var(--accent);">${INDICADORES.delegadas.toLocaleString('pt-BR')} <span style="font-size:17px; color:var(--muted); font-weight:400;">(${100-ctx.percAutoatribuidas}%)</span></div>
               <div style="font-size:16px; color:var(--muted);">Delegadas para outra pessoa da equipe</div>
             </div>
-            <div style="font-size:16px; color:var(--muted);">Quem mais cria tarefas: <b style="color:var(--text);">${ctx.topCriador[0]}</b> (${ctx.topCriador[1].toLocaleString('pt-BR')})</div>
+            <div style="font-size:16px; color:var(--muted);">Quem mais cria tarefas: <b style="color:var(--text);">${esc(ctx.topCriador[0])}</b> (${ctx.topCriador[1].toLocaleString('pt-BR')})</div>
             <div class="slide-insight" style="margin-top:4px;">
               <span class="icone">🔁</span>
               <span>${ctx.percAutoatribuidas >= 70
@@ -3774,14 +3795,14 @@ const REGISTRO_SLIDES_APRESENTACAO = [
           <div class="apresentacao-kpi-grid">
             <div class="apresentacao-kpi"><div class="valor" style="color:var(--accent)">${pTotal.toLocaleString('pt-BR')}</div><div class="rotulo">Processos cadastrados</div></div>
             <div class="apresentacao-kpi"><div class="valor" style="color:var(--green)">${percAtivosProcessos}%</div><div class="rotulo">Ativos</div></div>
-            <div class="apresentacao-kpi"><div class="valor" style="color:var(--teal)">${topEstadoProcessos[1].toLocaleString('pt-BR')}</div><div class="rotulo">Processos em ${topEstadoProcessos[0]}</div></div>
-            <div class="apresentacao-kpi"><div class="valor" style="color:var(--amber)">${topAreaProcessos[1].toLocaleString('pt-BR')}</div><div class="rotulo">Em ${topAreaProcessos[0]} (área líder)</div></div>
+            <div class="apresentacao-kpi"><div class="valor" style="color:var(--teal)">${topEstadoProcessos[1].toLocaleString('pt-BR')}</div><div class="rotulo">Processos em ${esc(topEstadoProcessos[0])}</div></div>
+            <div class="apresentacao-kpi"><div class="valor" style="color:var(--amber)">${topAreaProcessos[1].toLocaleString('pt-BR')}</div><div class="rotulo">Em ${esc(topAreaProcessos[0])} (área líder)</div></div>
             <div class="apresentacao-kpi"><div class="valor" style="color:var(--red)">${percPoloAtivoProcessos}%</div><div class="rotulo">Em polo ativo (Autor)</div></div>
           </div>
           <div class="slide-insight" style="max-width:1000px; margin-top:28px;">
             <span class="icone">💡</span>
-            <span>A maior parte dos processos tramita na <b>${nomeJusticaExibicao}</b> (<b>${percTopJusticaProcessos}%</b> do total),
-            com maior concentração em <b>${topEstadoProcessos[0]}</b>.
+            <span>A maior parte dos processos tramita na <b>${esc(nomeJusticaExibicao)}</b> (<b>${percTopJusticaProcessos}%</b> do total),
+            com maior concentração em <b>${esc(topEstadoProcessos[0])}</b>.
             O escritório atua majoritariamente como <b>${percPoloAtivoProcessos >= 50 ? 'autor' : 'réu'}</b> nesses processos
             (<b>${percPoloAtivoProcessos}%</b> em polo ativo).</span>
           </div>
@@ -3804,7 +3825,7 @@ const REGISTRO_SLIDES_APRESENTACAO = [
             <div style="font-size:16px; color:var(--muted); margin-bottom:8px;">Área mais afetada</div>
             <div class="slide-lista-numerica">
               ${ctx.areaRecentesOrdenada.slice(0, 4).map(([nome, valor]) => `
-                <div class="item"><span class="nome">${nome}</span><span class="num">${valor}</span></div>
+                <div class="item"><span class="nome">${esc(nome)}</span><span class="num">${valor}</span></div>
               `).join('')}
             </div>
           </div>
@@ -3844,12 +3865,12 @@ const REGISTRO_SLIDES_APRESENTACAO = [
             <div class="apresentacao-kpi"><div class="valor" style="color:var(--accent)">${cTotal.toLocaleString('pt-BR')}</div><div class="rotulo">Clientes distintos</div></div>
             <div class="apresentacao-kpi"><div class="valor" style="color:var(--red)">${percPoloAtivoClientes}%</div><div class="rotulo">% dos processos em que somos Autor</div></div>
             <div class="apresentacao-kpi"><div class="valor" style="color:var(--gray)">${percPoloPassivoClientes}%</div><div class="rotulo">% dos processos em que somos Réu</div></div>
-            <div class="apresentacao-kpi"><div class="valor" style="color:var(--teal)">${topAreaClientes[1].toLocaleString('pt-BR')}</div><div class="rotulo">Em ${topAreaClientes[0]} (área líder)</div></div>
-            <div class="apresentacao-kpi"><div class="valor" style="color:var(--amber)">${topCliente ? topCliente.total_processos.toLocaleString('pt-BR') : '—'}</div><div class="rotulo">${topCliente ? 'Processos de ' + topCliente.nome + ' (maior cliente)' : 'Maior cliente'}</div></div>
+            <div class="apresentacao-kpi"><div class="valor" style="color:var(--teal)">${topAreaClientes[1].toLocaleString('pt-BR')}</div><div class="rotulo">Em ${esc(topAreaClientes[0])} (área líder)</div></div>
+            <div class="apresentacao-kpi"><div class="valor" style="color:var(--amber)">${topCliente ? topCliente.total_processos.toLocaleString('pt-BR') : '—'}</div><div class="rotulo">${topCliente ? 'Processos de ' + esc(topCliente.nome) + ' (maior cliente)' : 'Maior cliente'}</div></div>
           </div>
           <div class="slide-insight" style="max-width:1000px; margin-top:28px;">
             <span class="icone">💡</span>
-            <span>O escritório atende <b>${cTotal.toLocaleString('pt-BR')}</b> clientes distintos, com maior concentração em <b>${topAreaClientes[0]}</b>.
+            <span>O escritório atende <b>${cTotal.toLocaleString('pt-BR')}</b> clientes distintos, com maior concentração em <b>${esc(topAreaClientes[0])}</b>.
             Somos Autor em <b>${percPoloAtivoClientes}%</b> dos processos e Réu em <b>${percPoloPassivoClientes}%</b>.</span>
           </div>
         </div>
@@ -3997,7 +4018,7 @@ const REGISTRO_SLIDES_APRESENTACAO = [
           <div class="item"><span class="nome">Tarefas no ${periodoRotuloPalavra()}</span><span class="num">${ctx.totalTarefas.toLocaleString('pt-BR')}</span></div>
           <div class="item"><span class="nome">Taxa de sucesso</span><span class="num">${ctx.taxaSucesso}%</span></div>
           <div class="item"><span class="nome">Melhor mês do ${periodoRotuloPalavra()}</span><span class="num">${ctx.melhorMes.mes_nome} (${ctx.melhorMes.total})</span></div>
-          <div class="item"><span class="nome">Área do direito líder</span><span class="num">${ctx.topArea[0]}</span></div>
+          <div class="item"><span class="nome">Área do direito líder</span><span class="num">${esc(ctx.topArea[0])}</span></div>
           <div class="item"><span class="nome">Tempo médio de ciclo</span><span class="num">${INDICADORES.ciclo_medio_geral !== null ? INDICADORES.ciclo_medio_geral + ' dias' : '—'}</span></div>
         </div>
         <div class="slide-subtitulo" style="margin-top:22px;">Directus Advocacia e Consultoria — Obrigado.</div>
@@ -4198,15 +4219,15 @@ function renderizarBlocoSlide(bloco, blocoId, ctx) {
     const valor = campo ? campo.valor : '—';
     return `
       <div class="slide-bloco ${tamanhoClasse}" style="align-items:center; text-align:center;">
-        <div class="bloco-numero-valor">${typeof valor === 'number' ? valor.toLocaleString('pt-BR') : valor}</div>
-        <div class="bloco-numero-rotulo">${campo ? campo.rotulo : 'Campo não encontrado'}</div>
+        <div class="bloco-numero-valor">${typeof valor === 'number' ? valor.toLocaleString('pt-BR') : esc(valor)}</div>
+        <div class="bloco-numero-rotulo">${campo ? esc(campo.rotulo) : 'Campo não encontrado'}</div>
       </div>
     `;
   }
   if (bloco.tipo === 'texto') {
     return `
       <div class="slide-bloco ${tamanhoClasse}">
-        <div class="bloco-texto-livre">${(bloco.conteudo || '').replace(/</g, '&lt;')}</div>
+        <div class="bloco-texto-livre">${esc(bloco.conteudo || '')}</div>
       </div>
     `;
   }
@@ -4230,7 +4251,7 @@ function construirSlideAPartirDeBlocos(slidePersonalizado) {
     personalizado: true,
     html: (ctx) => `
       <div class="apresentacao-slide">
-        <div class="slide-titulo" style="font-size:36px; margin-bottom:28px;">${slidePersonalizado.nome}</div>
+        <div class="slide-titulo" style="font-size:36px; margin-bottom:28px;">${esc(slidePersonalizado.nome)}</div>
         <div class="slide-blocos-linha">
           ${slidePersonalizado.blocos.map((bloco, i) => renderizarBlocoSlide(bloco, slidePersonalizado.id + '-b' + i, ctx)).join('')}
         </div>
@@ -4454,7 +4475,7 @@ function redesenharEditorBlocos() {
       corpoHtml = `
         <div class="bloco-tipo-label">Número / estatística</div>
         <select data-campo="campo">
-          ${opcoes.map(o => `<option value="${o.id}" ${bloco.campo === o.id ? 'selected' : ''}>${o.rotulo}</option>`).join('')}
+          ${opcoes.map(o => `<option value="${esc(o.id)}" ${bloco.campo === o.id ? 'selected' : ''}>${esc(o.rotulo)}</option>`).join('')}
         </select>
       `;
     } else if (bloco.tipo === 'grafico') {
@@ -4514,7 +4535,7 @@ function popularListaSlidesPersonalizadosGerenciar() {
   }
   container.innerHTML = '<div class="subtitle" style="margin-bottom:4px;">Slides personalizados já salvos:</div>' + slides.map(s => `
     <div class="item-montagem">
-      <label style="flex:1;">${s.nome} <span style="color:var(--muted); font-size:12px;">(${s.blocos.length} bloco${s.blocos.length === 1 ? '' : 's'})</span></label>
+      <label style="flex:1;">${esc(s.nome)} <span style="color:var(--muted); font-size:12px;">(${s.blocos.length} bloco${s.blocos.length === 1 ? '' : 's'})</span></label>
       <div class="setas">
         <button type="button" data-acao="editar" data-id="${s.id}" style="width:auto; padding:0 10px;">Editar</button>
         <button type="button" data-acao="excluir" data-id="${s.id}" style="width:auto; padding:0 10px; color:var(--red);">Excluir</button>
@@ -4604,13 +4625,13 @@ async function renderizarUsuarios() {
   document.getElementById('countUsuarios').textContent = usuarios.length;
   document.querySelector('#usuariosTable tbody').innerHTML = usuarios.map(u => `
     <tr>
-      <td>${u.nome}${u.sessao_ativa ? ' <span class="badge execucao">online</span>' : ''}</td>
-      <td>${u.chave_login}</td>
-      <td>${u.cargo || '—'}</td>
+      <td>${esc(u.nome)}${u.sessao_ativa ? ' <span class="badge execucao">online</span>' : ''}</td>
+      <td>${esc(u.chave_login)}</td>
+      <td>${esc(u.cargo) || '—'}</td>
       <td><span class="badge ${u.tipo === 'admin' ? 'atraso' : 'pendente'}">${u.tipo === 'admin' ? 'Administrador' : 'Normal'}</span></td>
       <td><span class="badge ${u.ativo ? 'execucao' : 'atraso'}">${u.ativo ? 'Ativo' : 'Bloqueado'}</span></td>
-      <td>${u.criado_em || '—'}</td>
-      <td>${u.ultimo_login || 'Nunca acessou'}</td>
+      <td>${esc(u.criado_em) || '—'}</td>
+      <td>${esc(u.ultimo_login) || 'Nunca acessou'}</td>
     </tr>
   `).join('');
 }

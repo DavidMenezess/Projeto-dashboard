@@ -4,6 +4,8 @@ main.py
 Ponto de entrada da API. Define as rotas:
 
   POST /auth/login              -> troca Nome + Sobrenome + senha por um token JWT
+                                    (bloqueia a conta por alguns minutos após
+                                    várias senhas erradas seguidas — ver app/rate_limit.py)
   GET  /me                      -> dados do usuário logado (nome, cargo, tipo)
   GET  /usuarios                -> lista todos os usuários (só admin)
   POST /usuarios                -> cria um novo usuário (só admin)
@@ -38,6 +40,7 @@ from app.auth import (
     verificar_senha, gerar_hash_senha, criar_token_acesso,
     obter_usuario_autenticado, exigir_administrador, gerar_chave_login,
 )
+from app.rate_limit import verificar_bloqueio, registrar_falha, registrar_sucesso
 from app.data_processor import (
     processar_tarefas, processar_processos_parados, processar_tarefas_periodo, processar_processos,
     processar_clientes, processar_tarefas_por_cliente_periodo,
@@ -210,8 +213,26 @@ def login(dados: LoginRequest, sessao: Session = Depends(obter_sessao)):
     Recebe Nome, Sobrenome e senha, confere no banco e devolve um token JWT.
     O dashboard deve enviar esse token no header 'Authorization: Bearer <token>'
     em todas as chamadas seguintes às rotas protegidas.
+
+    Proteção contra força bruta: depois de MAX_TENTATIVAS senhas erradas
+    seguidas para a mesma chave de login (nome.sobrenome), essa conta fica
+    bloqueada por alguns minutos, mesmo que a senha certa seja digitada
+    nesse meio tempo — ver app/rate_limit.py.
     """
     chave_login = gerar_chave_login(dados.primeiro_nome, dados.sobrenome)
+
+    segundos_restantes = verificar_bloqueio(chave_login)
+    if segundos_restantes is not None:
+        minutos_restantes = max(1, -(-segundos_restantes // 60))  # arredonda pra cima
+        logger.warning(
+            "Tentativa de login bloqueada por excesso de tentativas: '%s' (faltam %d min).",
+            chave_login, minutos_restantes,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Muitas tentativas erradas seguidas. Tente novamente em {minutos_restantes} minuto(s).",
+        )
+
     usuario = sessao.query(Usuario).filter(Usuario.chave_login == chave_login).first()
 
     credenciais_invalidas = HTTPException(
@@ -222,12 +243,14 @@ def login(dados: LoginRequest, sessao: Session = Depends(obter_sessao)):
     if usuario is None or not verificar_senha(dados.senha, usuario.senha_hash):
         # Mensagem genérica de propósito: não revela se o usuário existe ou não,
         # o que dificulta um ataque de enumeração de contas.
+        registrar_falha(chave_login)
         logger.info("Tentativa de login malsucedida para '%s'.", chave_login)
         raise credenciais_invalidas
 
     if usuario.ativo != 1:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Usuário desativado.")
 
+    registrar_sucesso(chave_login)
     usuario.ultimo_login = datetime.now(timezone.utc)
     sessao.commit()
 
