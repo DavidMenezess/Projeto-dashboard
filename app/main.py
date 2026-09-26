@@ -9,6 +9,7 @@ Ponto de entrada da API. Define as rotas:
   GET  /me                      -> dados do usuário logado (nome, cargo, tipo)
   GET  /usuarios                -> lista todos os usuários (só admin)
   POST /usuarios                -> cria um novo usuário (só admin)
+  PATCH /usuarios/{usuario_id}  -> edita nome, cargo, tipo, status ou senha de um usuário (só admin)
   GET  /api/tarefas             -> dados da seção "Produção 2026" (protegida)
   GET  /api/processos-parados   -> dados da seção "Processos Parados" (protegida)
   GET  /api/processos           -> cadastro geral de processos (protegida)
@@ -72,7 +73,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.lista_origens_permitidas,
     allow_credentials=True,
-    allow_methods=["GET", "POST"],
+    allow_methods=["GET", "POST", "PATCH"],
     allow_headers=["*"],
 )
 
@@ -268,8 +269,15 @@ def login(dados: LoginRequest, sessao: Session = Depends(obter_sessao)):
 
 @app.get("/me", tags=["Autenticação"])
 def obter_meu_usuario(usuario: Usuario = Depends(obter_usuario_autenticado)):
-    """Dados do usuário logado — o dashboard usa isso para saber o nome, cargo e se é administrador."""
+    """
+    Dados do usuário logado — o dashboard usa isso para saber o nome, cargo
+    e se é administrador. Inclui 'id' pra a tela de Usuários saber quando uma
+    linha da tabela é a própria conta de quem está logado (usada pra impedir
+    que um admin tire o próprio acesso de admin ou bloqueie a si mesmo sem
+    querer — ver PATCH /usuarios/{usuario_id}).
+    """
     return {
+        "id": usuario.id,
         "primeiro_nome": usuario.primeiro_nome,
         "sobrenome": usuario.sobrenome,
         "nome": f"{usuario.primeiro_nome} {usuario.sobrenome}",
@@ -361,6 +369,101 @@ def criar_usuario(
     return {
         "id": novo.id, "primeiro_nome": novo.primeiro_nome, "sobrenome": novo.sobrenome,
         "chave_login": novo.chave_login, "cargo": novo.cargo, "tipo": novo.tipo,
+    }
+
+
+class AtualizarUsuario(BaseModel):
+    """
+    Dados para editar um usuário já cadastrado — todos os campos são
+    opcionais: manda só o que quer mudar, o resto fica como está.
+    """
+    primeiro_nome: str | None = None
+    sobrenome: str | None = None
+    senha: str | None = None  # deixe de fora (ou null) para manter a senha atual
+    cargo: str | None = None
+    tipo: str | None = None  # "admin" ou "normal"
+    ativo: bool | None = None
+
+
+@app.patch("/usuarios/{usuario_id}", tags=["Usuários"])
+def editar_usuario(
+    usuario_id: int,
+    dados: AtualizarUsuario,
+    admin: Usuario = Depends(exigir_administrador),
+    sessao: Session = Depends(obter_sessao),
+):
+    """
+    Edita um usuário já cadastrado: nome/sobrenome (o que também muda o
+    login, já que ele é gerado a partir disso), cargo, tipo de acesso
+    (admin/normal), status (ativo/bloqueado) e/ou senha. Só administradores
+    podem editar.
+
+    Por segurança, um administrador não pode mudar o próprio tipo de acesso
+    nem o próprio status por aqui — isso evita que alguém se tire de
+    administrador ou bloqueie a própria conta sem querer e fique sem
+    conseguir desfazer. Se for realmente necessário, outro administrador
+    precisa fazer essa alteração específica.
+    """
+    usuario = sessao.query(Usuario).filter(Usuario.id == usuario_id).first()
+    if usuario is None:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado.")
+
+    eh_a_propria_conta = usuario.id == admin.id
+
+    if dados.tipo is not None:
+        if dados.tipo not in ("admin", "normal"):
+            raise HTTPException(status_code=422, detail="Campo 'tipo' deve ser 'admin' ou 'normal'.")
+        if eh_a_propria_conta and dados.tipo != usuario.tipo:
+            raise HTTPException(
+                status_code=422,
+                detail="Você não pode alterar seu próprio tipo de acesso. Peça para outro administrador fazer essa alteração.",
+            )
+        usuario.tipo = dados.tipo
+
+    if dados.ativo is not None:
+        if eh_a_propria_conta and dados.ativo != bool(usuario.ativo):
+            raise HTTPException(
+                status_code=422,
+                detail="Você não pode ativar/bloquear a própria conta. Peça para outro administrador fazer essa alteração.",
+            )
+        usuario.ativo = 1 if dados.ativo else 0
+
+    if dados.primeiro_nome is not None or dados.sobrenome is not None:
+        novo_primeiro = dados.primeiro_nome if dados.primeiro_nome is not None else usuario.primeiro_nome
+        novo_sobrenome = dados.sobrenome if dados.sobrenome is not None else usuario.sobrenome
+        nova_chave = gerar_chave_login(novo_primeiro, novo_sobrenome)
+        if nova_chave != usuario.chave_login:
+            colisao = sessao.query(Usuario).filter(
+                Usuario.chave_login == nova_chave, Usuario.id != usuario.id
+            ).first()
+            if colisao:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Já existe outro usuário com esse nome e sobrenome. Use um sobrenome mais completo para diferenciar.",
+                )
+        usuario.primeiro_nome = novo_primeiro
+        usuario.sobrenome = novo_sobrenome
+        usuario.chave_login = nova_chave
+
+    if dados.cargo is not None:
+        usuario.cargo = dados.cargo
+
+    if dados.senha is not None and dados.senha != "":
+        if len(dados.senha) < 8:
+            raise HTTPException(status_code=422, detail="A senha deve ter pelo menos 8 caracteres.")
+        usuario.senha_hash = gerar_hash_senha(dados.senha)
+
+    sessao.commit()
+    logger.info("Usuário '%s' editado por '%s'.", usuario.chave_login, admin.chave_login)
+
+    return {
+        "id": usuario.id,
+        "primeiro_nome": usuario.primeiro_nome,
+        "sobrenome": usuario.sobrenome,
+        "chave_login": usuario.chave_login,
+        "cargo": usuario.cargo,
+        "tipo": usuario.tipo,
+        "ativo": bool(usuario.ativo),
     }
 
 

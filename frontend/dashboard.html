@@ -2981,12 +2981,51 @@ async function aplicarTarefasPeriodoClientes() {
   <div class="login-error" id="erroNovoUsuario" style="margin-top:12px;"></div>
 </div>
 
+<div class="card full" id="cardEditarUsuario" style="margin-bottom:16px; display:none;">
+  <h2><span class="dot" style="background:var(--teal)"></span>Editar usuário: <span id="editarUsuarioNomeAtual"></span></h2>
+  <form id="formEditarUsuario" style="display:grid; grid-template-columns:repeat(3, 1fr); gap:12px; align-items:end;">
+    <input type="hidden" id="editarUsuarioId">
+    <div class="login-field" style="margin-bottom:0;">
+      <label for="editarNomeCompleto">Nome e sobrenome</label>
+      <input type="text" id="editarNomeCompleto" required>
+    </div>
+    <div class="login-field" style="margin-bottom:0;">
+      <label for="editarCargo">Cargo no escritório</label>
+      <input type="text" id="editarCargo">
+    </div>
+    <div class="login-field" style="margin-bottom:0;">
+      <label for="editarTipo">Tipo de acesso</label>
+      <select id="editarTipo" style="width:100%;">
+        <option value="normal">Normal</option>
+        <option value="admin">Administrador</option>
+      </select>
+    </div>
+    <div class="login-field" style="margin-bottom:0;">
+      <label for="editarStatus">Status</label>
+      <select id="editarStatus" style="width:100%;">
+        <option value="true">Ativo</option>
+        <option value="false">Bloqueado</option>
+      </select>
+    </div>
+    <div class="login-field" style="margin-bottom:0;">
+      <label for="editarSenha">Nova senha (opcional)</label>
+      <input type="password" id="editarSenha" minlength="8" placeholder="Deixe em branco para manter a atual">
+    </div>
+    <div style="display:flex; gap:10px;">
+      <button type="submit" class="login-btn" id="btnSalvarEdicaoUsuario" style="flex:1;">Salvar</button>
+      <button type="button" class="login-btn" id="btnCancelarEdicaoUsuario" style="flex:1; background:var(--panel-2); color:var(--text);">Cancelar</button>
+    </div>
+  </form>
+  <div class="subtitle" id="editarUsuarioAvisoProprio" style="margin-top:10px; display:none;">Você está editando sua própria conta — por segurança, tipo de acesso e status não podem ser alterados por aqui. Peça para outro administrador, se precisar mudar isso.</div>
+  <div class="login-error" id="erroEditarUsuario" style="margin-top:12px;"></div>
+</div>
+
 <div class="card full">
   <h2><span class="dot" style="background:var(--accent)"></span>Usuários cadastrados (<span id="countUsuarios"></span>)</h2>
   <div class="table-wrap" style="max-height:480px;">
     <table id="usuariosTable">
       <thead>
-        <tr><th>Nome</th><th>Login</th><th>Cargo</th><th>Tipo</th><th>Status</th><th>Cadastrado em</th><th>Último login</th></tr>
+        <tr><th>Nome</th><th>Login</th><th>Cargo</th><th>Tipo</th><th>Status</th><th>Cadastrado em</th><th>Último login</th><th>Ações</th></tr>
       </thead>
       <tbody></tbody>
     </table>
@@ -3111,6 +3150,7 @@ async function fetchComAuth(caminho, opcoes) {
 }
 
 let usuarioAtual = null;
+let USUARIOS_CACHE = []; // última lista de /usuarios recebida, usada pra preencher o formulário de edição sem precisar buscar de novo
 
 // Preenchidos a partir da resposta de /api/tarefas — dados de TODOS os anos
 // disponíveis, prontos para o seletor de ano e o comparativo, sem precisar
@@ -4621,6 +4661,7 @@ function popularListaMontagemSlides(idsAtuais) {
 async function renderizarUsuarios() {
   const resposta = await fetchComAuth('/usuarios');
   const usuarios = resposta.usuarios;
+  USUARIOS_CACHE = usuarios;
 
   document.getElementById('countUsuarios').textContent = usuarios.length;
   document.querySelector('#usuariosTable tbody').innerHTML = usuarios.map(u => `
@@ -4632,9 +4673,96 @@ async function renderizarUsuarios() {
       <td><span class="badge ${u.ativo ? 'execucao' : 'atraso'}">${u.ativo ? 'Ativo' : 'Bloqueado'}</span></td>
       <td>${esc(u.criado_em) || '—'}</td>
       <td>${esc(u.ultimo_login) || 'Nunca acessou'}</td>
+      <td><button type="button" class="login-btn" style="width:auto; padding:6px 14px; font-size:12.5px;" onclick="abrirEdicaoUsuario(${u.id})">Editar</button></td>
     </tr>
   `).join('');
 }
+
+/** Abre o formulário de edição já preenchido com os dados atuais daquele usuário. */
+function abrirEdicaoUsuario(usuarioId) {
+  const u = USUARIOS_CACHE.find(x => x.id === usuarioId);
+  if (!u) return;
+
+  document.getElementById('editarUsuarioId').value = u.id;
+  document.getElementById('editarUsuarioNomeAtual').textContent = u.nome;
+  document.getElementById('editarNomeCompleto').value = u.nome;
+  document.getElementById('editarCargo').value = u.cargo || '';
+  document.getElementById('editarTipo').value = u.tipo;
+  document.getElementById('editarStatus').value = u.ativo ? 'true' : 'false';
+  document.getElementById('editarSenha').value = '';
+  document.getElementById('erroEditarUsuario').textContent = '';
+  document.getElementById('erroEditarUsuario').classList.remove('show');
+
+  // Por segurança (ver PATCH /usuarios/{id} no backend), um admin não pode
+  // mudar o próprio tipo de acesso nem o próprio status — trava esses dois
+  // campos na tela quando a pessoa está editando a própria conta, em vez de
+  // deixar ela tentar e só descobrir pelo erro do servidor.
+  const ehAPropriaConta = usuarioAtual && usuarioAtual.id === u.id;
+  document.getElementById('editarTipo').disabled = ehAPropriaConta;
+  document.getElementById('editarStatus').disabled = ehAPropriaConta;
+  document.getElementById('editarUsuarioAvisoProprio').style.display = ehAPropriaConta ? '' : 'none';
+
+  document.getElementById('cardEditarUsuario').style.display = '';
+  document.getElementById('cardEditarUsuario').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+document.getElementById('btnCancelarEdicaoUsuario').addEventListener('click', () => {
+  document.getElementById('cardEditarUsuario').style.display = 'none';
+});
+
+document.getElementById('formEditarUsuario').addEventListener('submit', async (evento) => {
+  evento.preventDefault();
+  const botao = document.getElementById('btnSalvarEdicaoUsuario');
+  const erroEl = document.getElementById('erroEditarUsuario');
+  erroEl.classList.remove('show');
+
+  const usuarioId = document.getElementById('editarUsuarioId').value;
+  const { primeiro_nome, sobrenome } = dividirNomeCompleto(document.getElementById('editarNomeCompleto').value);
+  if (!sobrenome) {
+    erroEl.textContent = 'Digite o nome e o sobrenome, separados por espaço (ex: Maria Silva).';
+    erroEl.classList.add('show');
+    return;
+  }
+
+  const corpo = {
+    primeiro_nome,
+    sobrenome,
+    cargo: document.getElementById('editarCargo').value.trim(),
+  };
+  // Tipo e status só entram no corpo se o campo não estiver desabilitado
+  // (ou seja, se não for a própria conta de quem está editando).
+  if (!document.getElementById('editarTipo').disabled) {
+    corpo.tipo = document.getElementById('editarTipo').value;
+  }
+  if (!document.getElementById('editarStatus').disabled) {
+    corpo.ativo = document.getElementById('editarStatus').value === 'true';
+  }
+  // Senha só entra no corpo se a pessoa digitou algo — em branco significa
+  // "manter a senha atual" (ver PATCH /usuarios/{id} no backend).
+  const novaSenha = document.getElementById('editarSenha').value;
+  if (novaSenha) {
+    corpo.senha = novaSenha;
+  }
+
+  botao.disabled = true;
+  botao.textContent = 'Salvando...';
+
+  try {
+    await fetchComAuth(`/usuarios/${usuarioId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(corpo),
+    });
+    document.getElementById('cardEditarUsuario').style.display = 'none';
+    await renderizarUsuarios();
+  } catch (erro) {
+    erroEl.textContent = erro.message || 'Não foi possível salvar as alterações.';
+    erroEl.classList.add('show');
+  } finally {
+    botao.disabled = false;
+    botao.textContent = 'Salvar';
+  }
+});
 
 document.getElementById('formNovoUsuario').addEventListener('submit', async (evento) => {
   evento.preventDefault();
