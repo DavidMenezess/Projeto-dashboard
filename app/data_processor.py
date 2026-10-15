@@ -515,9 +515,9 @@ def _calcular_pendencias(df: pd.DataFrame, hoje: pd.Timestamp) -> dict:
     aparecendo aqui em 2027 enquanto não for resolvida; não faz sentido
     "escondê-la" só porque o ano mudou.
 
-    "Pendente" e "Em execução" são tratadas SEPARADAMENTE, nunca somadas
-    numa lista só — antes eram, e isso fazia o total dessas listas não
-    bater com o KPI "Pendentes" da aba Produção (que conta só
+    "Pendente", "Em execução" e "Revisão" são tratadas SEPARADAMENTE,
+    nunca somadas numa lista só — antes eram, e isso fazia o total dessas
+    listas não bater com o KPI "Pendentes" da aba Produção (que conta só
     Situação=="Pendente"):
       - as chaves de topo (overdue_list, upcoming_list, total_atrasadas,
         total_pendentes) cobrem só Situação=="Pendente" — mantidas com
@@ -527,12 +527,19 @@ def _calcular_pendencias(df: pd.DataFrame, hoje: pd.Timestamp) -> dict:
         — uma tarefa já em andamento mas com o prazo fatal vencido (ou
         perto de vencer) não pode ficar invisível só por já estar "em
         execução".
+      - "revisao" tem a mesma estrutura, para Situação=="Revisão" — uma
+        tarefa que já foi feita mas está em revisão ainda não é um caso
+        encerrado, e pode muito bem ter o prazo fatal vencido sem que
+        ninguém perceba (foi daí que veio a divergência com o ProJuris:
+        essas tarefas não apareciam em nenhuma lista de vencidas).
     """
     pendentes_df = df[df["Situação"] == "Pendente"].copy()
     em_execucao_df = df[df["Situação"] == "Em execução"].copy()
+    revisao_df = df[df["Situação"] == "Revisão"].copy()
 
     resultado = _bloco_pendencias(pendentes_df, hoje)
     resultado["em_execucao"] = _bloco_pendencias(em_execucao_df, hoje)
+    resultado["revisao"] = _bloco_pendencias(revisao_df, hoje)
     return resultado
 
 

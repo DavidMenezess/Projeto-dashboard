@@ -557,6 +557,7 @@ function renderizarComparativo() {
   .badge.pendente{background:rgba(217,164,65,.15); color:var(--amber);}
   .badge.execucao{background:rgba(var(--gold-rgb),.15); color:var(--accent);}
   .badge.atraso{background:rgba(201,123,95,.15); color:var(--red);}
+  .badge.revisao{background:rgba(155,138,166,.18); color:var(--purple);}
 
   /* ===== Modo Apresentação (slides grandes, para TV/projetor) ===== */
   .apresentacao-container{
@@ -567,30 +568,31 @@ function renderizarComparativo() {
   .apresentacao-slides{ position:relative; width:100%; height:100%; }
   .apresentacao-slide{
     position:absolute; inset:0; display:none; flex-direction:column;
-    align-items:center; justify-content:center; padding:60px 80px;
-    text-align:center;
+    align-items:safe center; justify-content:safe center;
+    padding:clamp(24px, 5vh, 60px) clamp(24px, 6vw, 80px);
+    text-align:center; overflow-wrap:break-word; word-break:break-word; overflow-y:auto;
   }
   .apresentacao-slide.ativo{ display:flex; animation:fadeInSlide .4s ease; }
   @keyframes fadeInSlide{ from{opacity:0;} to{opacity:1;} }
   .apresentacao-slide .slide-titulo{
-    font-size:38px; font-weight:800; color:var(--accent); margin-bottom:6px; letter-spacing:.3px;
+    font-size:clamp(22px, 3.3vw, 38px); font-weight:800; color:var(--accent); margin-bottom:6px; letter-spacing:.3px;
   }
   .apresentacao-slide .slide-subtitulo{
-    font-size:18px; color:var(--muted); margin-bottom:36px;
+    font-size:clamp(12px, 1.2vw, 18px); color:var(--muted); margin-bottom:clamp(14px, 3vh, 36px);
   }
   .apresentacao-kpi-grid{
-    display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr));
-    gap:22px; width:100%; max-width:1560px;
+    display:grid; grid-template-columns:repeat(auto-fit, minmax(190px, 1fr));
+    gap:22px; width:100%; max-width:min(92vw, 1560px);
   }
   .apresentacao-kpi{
     background:var(--panel); border:1px solid var(--border); border-radius:18px; padding:32px 20px;
     display:flex; flex-direction:column; justify-content:center; min-height:100%; box-sizing:border-box;
   }
-  .apresentacao-kpi .valor{ font-size:76px; font-weight:800; line-height:1; margin-bottom:10px; font-variant-numeric:tabular-nums; }
-  .apresentacao-kpi .rotulo{ font-size:17px; color:var(--muted); }
-  .apresentacao-slide .slide-grafico-wrap{ width:100%; max-width:1200px; height:100%; max-height:520px; }
-  .apresentacao-slide .slide-destaque{ font-size:130px; font-weight:800; line-height:1; font-variant-numeric:tabular-nums; }
-  .apresentacao-slide .slide-destaque-legenda{ font-size:24px; color:var(--muted); margin-top:18px; }
+  .apresentacao-kpi .valor{ font-size:clamp(30px, 5.2vw, 76px); font-weight:800; line-height:1.05; margin-bottom:10px; font-variant-numeric:tabular-nums; overflow-wrap:break-word; }
+  .apresentacao-kpi .rotulo{ font-size:clamp(12px, 1.1vw, 17px); color:var(--muted); overflow-wrap:break-word; }
+  .apresentacao-slide .slide-grafico-wrap{ width:100%; max-width:1200px; height:100%; max-height:clamp(220px, 46vh, 520px); }
+  .apresentacao-slide .slide-destaque{ font-size:clamp(50px, 9vw, 130px); font-weight:800; line-height:1; font-variant-numeric:tabular-nums; }
+  .apresentacao-slide .slide-destaque-legenda{ font-size:clamp(13px, 1.5vw, 24px); color:var(--muted); margin-top:18px; }
   .apresentacao-duas-colunas{ display:flex; gap:60px; align-items:center; justify-content:center; width:100%; max-width:1300px; }
   .apresentacao-duas-colunas > div{ flex:1; }
   /* Grid do slide "Comparativo mensal" quando há um período customizado com mais
@@ -628,9 +630,9 @@ function renderizarComparativo() {
   }
   .apresentacao-dot.ativo{ background:var(--accent); }
 
-  .slide-corpo{ display:flex; gap:48px; width:100%; max-width:1400px; align-items:center; }
-  .slide-corpo .slide-col-grafico{ flex:1.3; min-width:0; height:460px; display:flex; }
-  .slide-corpo .slide-col-grafico canvas{ max-height:460px; }
+  .slide-corpo{ display:flex; gap:clamp(20px, 3vw, 48px); width:100%; max-width:min(94vw, 1400px); align-items:center; }
+  .slide-corpo .slide-col-grafico{ flex:1.3; min-width:0; height:clamp(200px, 38vh, 460px); display:flex; }
+  .slide-corpo .slide-col-grafico canvas{ max-height:clamp(200px, 38vh, 460px); }
   .slide-corpo .slide-col-texto{ flex:1; min-width:0; text-align:left; display:flex; flex-direction:column; justify-content:flex-start; gap:14px; max-height:none; overflow:visible; }
   .slide-lista-numerica{ display:flex; flex-direction:column; gap:12px; }
   .slide-lista-numerica .item{ display:flex; justify-content:space-between; align-items:baseline; gap:14px; border-bottom:1px solid var(--border); padding-bottom:9px; }
@@ -640,14 +642,14 @@ function renderizarComparativo() {
   .slide-texto-explicativo b{ color:var(--accent); }
   .slide-insight{
     background:rgba(212,175,55,.08); border:1px solid rgba(212,175,55,.35); border-radius:12px;
-    padding:16px 20px; font-size:17px; line-height:1.5; color:var(--text); display:flex; gap:12px; align-items:flex-start;
+    padding:16px 20px; font-size:clamp(12px, 1.1vw, 17px); line-height:1.5; color:var(--text); display:flex; gap:12px; align-items:flex-start;
   }
-  .slide-insight .icone{ font-size:22px; flex-shrink:0; }
+  .slide-insight .icone{ font-size:clamp(15px, 1.4vw, 22px); flex-shrink:0; }
   .slide-insight b{ color:var(--amber); }
   .slide-mini-kpis{ display:flex; gap:24px; flex-wrap:wrap; }
   .slide-mini-kpis .mini-kpi{ text-align:left; }
-  .slide-mini-kpis .mini-kpi .valor{ font-size:32px; font-weight:800; font-variant-numeric:tabular-nums; }
-  .slide-mini-kpis .mini-kpi .rotulo{ font-size:14px; color:var(--muted); }
+  .slide-mini-kpis .mini-kpi .valor{ font-size:clamp(18px, 2.2vw, 32px); font-weight:800; font-variant-numeric:tabular-nums; }
+  .slide-mini-kpis .mini-kpi .rotulo{ font-size:clamp(10px, 1vw, 14px); color:var(--muted); }
 
   .item-montagem{
     display:flex; align-items:center; gap:12px; background:var(--panel-2); border:1px solid var(--border);
@@ -693,33 +695,33 @@ function renderizarComparativo() {
   .slide-bloco .bloco-grafico-canvas-wrap{ width:100%; height:320px; }
 
   /* ===== Modo Apresentacao: versao ampliada em tela cheia ===== */
-  .apresentacao-container:fullscreen .apresentacao-slide{ padding:40px 60px; }
-  .apresentacao-container:fullscreen .slide-titulo{ font-size:50px; margin-bottom:8px; }
-  .apresentacao-container:fullscreen .slide-subtitulo{ font-size:22px; margin-bottom:40px; }
+  .apresentacao-container:fullscreen .apresentacao-slide{ padding:clamp(20px, 4vh, 40px) clamp(24px, 5vw, 60px); }
+  .apresentacao-container:fullscreen .slide-titulo{ font-size:clamp(26px, 3.8vw, 50px); margin-bottom:8px; }
+  .apresentacao-container:fullscreen .slide-subtitulo{ font-size:clamp(14px, 1.4vw, 22px); margin-bottom:clamp(16px, 3.5vh, 40px); }
   .apresentacao-container:fullscreen .apresentacao-kpi-grid{ max-width:1750px; }
-  .apresentacao-container:fullscreen .apresentacao-kpi .valor{ font-size:92px; }
-  .apresentacao-container:fullscreen .apresentacao-kpi .rotulo{ font-size:20px; }
-  .apresentacao-container:fullscreen .slide-grafico-wrap{ max-width:1350px; max-height:560px; }
-  .apresentacao-container:fullscreen .slide-destaque{ font-size:150px; }
-  .apresentacao-container:fullscreen .slide-destaque-legenda{ font-size:28px; }
+  .apresentacao-container:fullscreen .apresentacao-kpi .valor{ font-size:clamp(34px, 6vw, 92px); }
+  .apresentacao-container:fullscreen .apresentacao-kpi .rotulo{ font-size:clamp(13px, 1.3vw, 20px); }
+  .apresentacao-container:fullscreen .slide-grafico-wrap{ max-width:1350px; max-height:clamp(240px, 50vh, 560px); }
+  .apresentacao-container:fullscreen .slide-destaque{ font-size:clamp(56px, 10vw, 150px); }
+  .apresentacao-container:fullscreen .slide-destaque-legenda{ font-size:clamp(15px, 1.7vw, 28px); }
   .apresentacao-container:fullscreen .apresentacao-duas-colunas{ max-width:1450px; }
   .apresentacao-container:fullscreen .comparativo-mensal-grid{ max-width:1750px; }
-  .apresentacao-container:fullscreen .comparativo-mensal-col .comparativo-mensal-col-titulo{ font-size:20px; }
-  .apresentacao-container:fullscreen .comparativo-mensal-col .slide-lista-numerica .item .nome{ font-size:18px; }
-  .apresentacao-container:fullscreen .comparativo-mensal-col .slide-lista-numerica .item .num{ font-size:22px; }
+  .apresentacao-container:fullscreen .comparativo-mensal-col .comparativo-mensal-col-titulo{ font-size:clamp(13px, 1.3vw, 20px); }
+  .apresentacao-container:fullscreen .comparativo-mensal-col .slide-lista-numerica .item .nome{ font-size:clamp(12px, 1.1vw, 18px); }
+  .apresentacao-container:fullscreen .comparativo-mensal-col .slide-lista-numerica .item .num{ font-size:clamp(14px, 1.3vw, 22px); }
   .apresentacao-container:fullscreen .slide-corpo{ gap:40px; max-width:1550px; }
-  .apresentacao-container:fullscreen .slide-col-grafico{ flex:1.6; height:500px; }
-  .apresentacao-container:fullscreen .slide-col-grafico canvas{ max-height:500px; }
-  .apresentacao-container:fullscreen .slide-lista-numerica .item .nome{ font-size:23px; }
-  .apresentacao-container:fullscreen .slide-lista-numerica .item .num{ font-size:28px; }
-  .apresentacao-container:fullscreen .slide-texto-explicativo{ font-size:23px; }
-  .apresentacao-container:fullscreen .slide-insight{ padding:20px 24px; font-size:20px; }
-  .apresentacao-container:fullscreen .slide-insight .icone{ font-size:26px; }
-  .apresentacao-container:fullscreen .slide-mini-kpis .mini-kpi .valor{ font-size:40px; }
-  .apresentacao-container:fullscreen .slide-mini-kpis .mini-kpi .rotulo{ font-size:17px; }
-  .apresentacao-container:fullscreen .slide-bloco .bloco-numero-valor{ font-size:70px; }
-  .apresentacao-container:fullscreen .slide-bloco .bloco-numero-rotulo{ font-size:19px; }
-  .apresentacao-container:fullscreen .slide-bloco .bloco-texto-livre{ font-size:23px; }
+  .apresentacao-container:fullscreen .slide-col-grafico{ flex:1.6; height:clamp(220px, 42vh, 500px); }
+  .apresentacao-container:fullscreen .slide-col-grafico canvas{ max-height:clamp(220px, 42vh, 500px); }
+  .apresentacao-container:fullscreen .slide-lista-numerica .item .nome{ font-size:clamp(14px, 1.4vw, 23px); }
+  .apresentacao-container:fullscreen .slide-lista-numerica .item .num{ font-size:clamp(16px, 1.6vw, 28px); }
+  .apresentacao-container:fullscreen .slide-texto-explicativo{ font-size:clamp(14px, 1.4vw, 23px); }
+  .apresentacao-container:fullscreen .slide-insight{ padding:clamp(12px, 2vh, 20px) clamp(14px, 2vw, 24px); font-size:clamp(13px, 1.3vw, 20px); }
+  .apresentacao-container:fullscreen .slide-insight .icone{ font-size:clamp(16px, 1.6vw, 26px); }
+  .apresentacao-container:fullscreen .slide-mini-kpis .mini-kpi .valor{ font-size:clamp(20px, 2.6vw, 40px); }
+  .apresentacao-container:fullscreen .slide-mini-kpis .mini-kpi .rotulo{ font-size:clamp(11px, 1.1vw, 17px); }
+  .apresentacao-container:fullscreen .slide-bloco .bloco-numero-valor{ font-size:clamp(32px, 5vw, 70px); }
+  .apresentacao-container:fullscreen .slide-bloco .bloco-numero-rotulo{ font-size:clamp(12px, 1.2vw, 19px); }
+  .apresentacao-container:fullscreen .slide-bloco .bloco-texto-livre{ font-size:clamp(14px, 1.4vw, 23px); }
 
   /* ===== Lista de progresso (substitui donut quando os dados são desbalanceados) ===== */
   .progress-list{display:flex; flex-direction:column; gap:16px; padding:6px 2px;}
@@ -1125,6 +1127,35 @@ function renderizarComparativo() {
   </div>
 </div>
 
+<div class="card full" id="cardRevisaoVencido" style="margin-bottom:16px;">
+  <h2><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 3.6 1.9 18a2 2 0 0 0 1.7 3h16.8a2 2 0 0 0 1.7-3L13.7 3.6a2 2 0 0 0-3.4 0Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> Em revisão — prazo fatal vencido (<span id="countAtrasadasRevisao"></span>)</h2>
+  <div class="subtitle" style="margin-bottom:14px;">Tarefas que já foram feitas mas estão em revisão, com o prazo fatal já vencido — separado das demais porque "Revisão" é uma situação diferente de "Pendente" e "Em execução".</div>
+  <div class="filters">
+    <input type="text" id="searchOverdueRevisao" placeholder="Buscar por processo, responsável, tipo...">
+    <select id="filterRespOverdueRevisao"><option value="">Todos os responsáveis</option></select>
+  </div>
+  <div class="table-wrap">
+    <table id="overdueTableRevisao">
+      <thead>
+        <tr><th>Tarefa</th><th>Tipo</th><th>Responsável</th><th>Processo</th><th>Órgão</th><th>Fatal</th><th>Situação</th><th>Atraso</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card full" id="cardRevisaoProximo">
+  <h2><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14.5"/></svg> Em revisão — próximas do prazo</h2>
+  <div class="table-wrap">
+    <table id="upcomingTableRevisao">
+      <thead>
+        <tr><th>Tarefa</th><th>Tipo</th><th>Responsável</th><th>Processo</th><th>Órgão</th><th>Fatal</th><th>Situação</th><th>Faltam</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</div>
+
 </div><!-- fim painel-producao -->
 
 <div class="tab-panel" id="painel-tipo">
@@ -1162,29 +1193,28 @@ function renderizarComparativo() {
 
 <div class="tab-panel" id="painel-indicadores">
 <h1 id="section-indicadores" style="margin-top:0;">Indicadores</h1>
-<div class="subtitle">Análises mais profundas sobre como o trabalho é feito — tempo de ciclo, quem representamos, área do direito e como as tarefas são delegadas. Alguns indicadores (horas trabalhadas, instância, fase, vara) ainda não aparecem aqui porque a planilha não tem esse dado preenchido de forma consistente ainda.</div>
+<div class="subtitle">Análises mais profundas sobre como o trabalho é feito — quem representamos, área do direito e como as tarefas são delegadas. Alguns indicadores (horas trabalhadas, instância, fase, vara) ainda não aparecem aqui porque a planilha não tem esse dado preenchido de forma consistente ainda.</div>
 
-<div class="grid3">
-  <div class="card">
-    <h2><span class="dot" style="background:var(--teal)"></span>Tempo médio de ciclo (criação → conclusão)</h2>
-    <div class="kpi-grid" id="kpiCicloGeral" style="margin-bottom:18px;"></div>
-    <div class="chart-wrap" id="cicloRespChartWrap"><canvas id="cicloRespChart"></canvas></div>
-  </div>
-  <div class="card">
-    <h2><span class="dot" style="background:var(--red)"></span>Polo no processo — produção geral</h2>
-    <canvas id="indicadoresPoloChart"></canvas>
-  </div>
+<div class="card full">
+  <h2><span class="dot" style="background:var(--red)"></span>Polo no processo — produção geral</h2>
+  <div style="max-width:420px; margin:0 auto;"><canvas id="indicadoresPoloChart"></canvas></div>
 </div>
 
-<div class="grid3">
-  <div class="card">
-    <h2><span class="dot" style="background:var(--purple)"></span>Área do direito mais frequente</h2>
-    <div class="chart-wrap" id="areaDireitoChartWrap"><canvas id="areaDireitoChart"></canvas></div>
-  </div>
-  <div class="card">
-    <h2><span class="dot" style="background:var(--amber)"></span>Quem mais cria tarefas</h2>
-    <div class="chart-wrap" id="criadorChartWrap"><canvas id="criadorChart"></canvas></div>
-  </div>
+<div class="card full">
+  <h2><span class="dot" style="background:var(--purple)"></span>Área do direito mais frequente</h2>
+  <div class="chart-wrap" id="areaDireitoChartWrap"><canvas id="areaDireitoChart"></canvas></div>
+</div>
+
+<div class="card full">
+  <h2><span class="dot" style="background:var(--teal)"></span>Processos novos em <span id="anoProcessosNovos"></span> (<span id="countProcessosNovos"></span>)</h2>
+  <div class="subtitle" style="margin-bottom:16px;">Processos distribuídos de 01/01 até a data mais recente presente na planilha carregada — conforme novas planilhas forem chegando, esse número e os gráficos abaixo se atualizam sozinhos.</div>
+  <div class="chart-wrap" id="processosNovosMesChartWrap"><canvas id="processosNovosMesChart"></canvas></div>
+</div>
+
+<div class="card full">
+  <h2><span class="dot" style="background:var(--pink)"></span>Tipos de processo mais frequentes em <span id="anoProcessosNovosTipo"></span></h2>
+  <div class="subtitle" style="margin-bottom:16px;">Área do direito dos processos novos do ano, do mais frequente para o menos frequente.</div>
+  <div class="chart-wrap" id="processosNovosTipoChartWrap"><canvas id="processosNovosTipoChart"></canvas></div>
 </div>
 
 <div class="card full">
@@ -1532,6 +1562,72 @@ function upcomingExecRow(r){
 const upcomingPagerExec = makePaginatedTable('upcomingTableExec', upcomingExecRow, 15);
 upcomingPagerExec.setData(emExecucao.upcoming_list);
 document.getElementById('cardExecProximo').style.display = emExecucao.upcoming_list.length ? '' : 'none';
+
+// ===== Em revisão — prazo fatal vencido / próximas do prazo =====
+// Mesmo padrão de "Em execução" acima — situação "Revisão" tratada à parte
+// (ver comentário em _calcular_pendencias no backend). Foi daqui que veio a
+// divergência com o ProJuris: tarefas em revisão com prazo fatal vencido não
+// apareciam em nenhuma lista antes dessa seção existir.
+const emRevisao = (PENDENCIAS && PENDENCIAS.revisao) || { overdue_list: [], upcoming_list: [] };
+
+function overdueRevisaoRow(r){
+  return `
+    <tr>
+      <td>${esc(r.id)}</td>
+      <td>${esc(r.tipo)}</td>
+      <td>${esc(r.responsavel)}</td>
+      <td>${esc(r.processo) || '—'}</td>
+      <td>${esc(r.orgao) || '—'}</td>
+      <td>${esc(r.data_fatal)}</td>
+      <td><span class="badge revisao">${esc(r.situacao)}</span></td>
+      <td><span class="badge atraso">${esc(r.dias_atraso)}d</span></td>
+    </tr>
+  `;
+}
+const overduePagerRevisao = makePaginatedTable('overdueTableRevisao', overdueRevisaoRow, 15);
+overduePagerRevisao.setData(emRevisao.overdue_list);
+document.getElementById('countAtrasadasRevisao').textContent = emRevisao.overdue_list.length;
+document.getElementById('cardRevisaoVencido').style.display = emRevisao.overdue_list.length ? '' : 'none';
+
+// filters for overdue (em revisão)
+const respSetRevisao = [...new Set(emRevisao.overdue_list.map(r=>r.responsavel))].sort();
+const selRespRevisao = document.getElementById('filterRespOverdueRevisao');
+respSetRevisao.forEach(r => {
+  const opt = document.createElement('option');
+  opt.value = r; opt.textContent = r;
+  selRespRevisao.appendChild(opt);
+});
+
+function applyOverdueFiltersRevisao(){
+  const q = document.getElementById('searchOverdueRevisao').value.toLowerCase();
+  const resp = selRespRevisao.value;
+  const filtered = emRevisao.overdue_list.filter(r => {
+    const matchesQ = !q || (r.id+r.tipo+r.responsavel+r.processo+r.orgao).toLowerCase().includes(q);
+    const matchesResp = !resp || r.responsavel === resp;
+    return matchesQ && matchesResp;
+  });
+  overduePagerRevisao.setData(filtered);
+}
+document.getElementById('searchOverdueRevisao').addEventListener('input', applyOverdueFiltersRevisao);
+selRespRevisao.addEventListener('change', applyOverdueFiltersRevisao);
+
+function upcomingRevisaoRow(r){
+  return `
+  <tr>
+    <td>${esc(r.id)}</td>
+    <td>${esc(r.tipo)}</td>
+    <td>${esc(r.responsavel)}</td>
+    <td>${esc(r.processo) || '—'}</td>
+    <td>${esc(r.orgao) || '—'}</td>
+    <td>${esc(r.data_fatal)}</td>
+    <td><span class="badge revisao">${esc(r.situacao)}</span></td>
+    <td><span class="badge pendente">${esc(r.dias_restantes)}d</span></td>
+  </tr>
+`;
+}
+const upcomingPagerRevisao = makePaginatedTable('upcomingTableRevisao', upcomingRevisaoRow, 15);
+upcomingPagerRevisao.setData(emRevisao.upcoming_list);
+document.getElementById('cardRevisaoProximo').style.display = emRevisao.upcoming_list.length ? '' : 'none';
 }
 </script>
 
@@ -1557,9 +1653,6 @@ function renderizarBlocoParados(dados, sufixo) {
     {label:'Ativos', value: dados.situacao_counts['Ativo']||0, cls:'amber'},
     {label:'Arquivados', value: dados.situacao_counts['Arquivado']||0, cls:'gray'},
   ];
-  if (dados.idade_media_anos !== null) {
-    stKpis.push({label:'Idade média do processo (' + dados.idade_cobertura_pct + '% com data)', value: dados.idade_media_anos, cls:'purple'});
-  }
   el('kpiGridStalled').innerHTML = stKpis.map((k, i) => `
     <div class="kpi ${k.cls}">
       <div class="label">${k.label}</div>
@@ -1603,7 +1696,7 @@ function renderizarBlocoParados(dados, sufixo) {
     'Polo Ativo (Autor)': COLORS.red,
     'Polo Passivo (Réu)': COLORS.gray,
     'Misto': COLORS.amber,
-    'Não identificado': COLORS.gray,
+    'Não identificado': COLORS.purple,
   };
   const poloLabels = Object.keys(dados.polo_counts);
   criarGrafico('stalledPoloChart' + sufixo, {
@@ -1615,19 +1708,44 @@ function renderizarBlocoParados(dados, sufixo) {
     options:{responsive:true, plugins:{legend:{position:'bottom', labels:{boxWidth:12}}}, cutout:'62%'}
   });
 
-  // Caixa explicando a prioridade
-  const ativoN = dados.polo_counts['Polo Ativo (Autor)'] || 0;
-  const passivoN = dados.polo_counts['Polo Passivo (Réu)'] || 0;
-  el('poloPriorityBox').innerHTML = `
-    <div style="display:flex; align-items:center; gap:12px; padding:12px 14px; background:rgba(224,92,92,.08); border:1px solid rgba(224,92,92,.3); border-radius:10px;">
-      <div style="font-size:22px; font-weight:800; color:var(--red); min-width:38px;">${ativoN}</div>
-      <div style="font-size:12.5px; color:var(--text);"><b>Polo Ativo (Autor)</b> — o escritório representa quem busca o direito. São processos que precisam de atenção prioritária: a demora prejudica diretamente o próprio cliente.</div>
-    </div>
-    <div style="display:flex; align-items:center; gap:12px; padding:12px 14px; background:rgba(138,124,95,.08); border:1px solid var(--border); border-radius:10px;">
-      <div style="font-size:22px; font-weight:800; color:var(--muted); min-width:38px;">${passivoN}</div>
-      <div style="font-size:12.5px; color:var(--text);"><b>Polo Passivo (Réu)</b> — o escritório representa quem está sendo cobrado/processado. A demora tende a favorecer o cliente, então esses casos podem esperar.</div>
-    </div>
-  `;
+  // Caixa explicando a prioridade — dinâmica, cobre TODAS as categorias de
+  // polo que existirem nos dados (Ativo, Misto, Passivo, Não identificado).
+  // Antes só mostrava Ativo/Passivo fixos no HTML, então "Misto" e "Não
+  // identificado" ficavam de fora da caixa mesmo quando existiam na
+  // planilha — só o gráfico de rosca (que já lê Object.keys dinamicamente)
+  // mostrava essas categorias. Uma categoria com 0 processos não aparece,
+  // pra não ocupar espaço à toa.
+  const polosPrioridade = [
+    {
+      chave: 'Polo Ativo (Autor)', cor: 'var(--red)',
+      corFundo: 'rgba(224,92,92,.08)', corBorda: 'rgba(224,92,92,.3)',
+      texto: '<b>Polo Ativo (Autor)</b> — o escritório representa quem busca o direito. São processos que precisam de atenção prioritária: a demora prejudica diretamente o próprio cliente.',
+    },
+    {
+      chave: 'Misto', cor: 'var(--amber)',
+      corFundo: 'rgba(217,164,65,.08)', corBorda: 'rgba(217,164,65,.3)',
+      texto: '<b>Misto</b> — o escritório representa as duas partes do processo. Situação mais rara, mas que merece uma checagem caso a caso.',
+    },
+    {
+      chave: 'Polo Passivo (Réu)', cor: 'var(--muted)',
+      corFundo: 'rgba(138,124,95,.08)', corBorda: 'var(--border)',
+      texto: '<b>Polo Passivo (Réu)</b> — o escritório representa quem está sendo cobrado/processado. A demora tende a favorecer o cliente, então esses casos podem esperar.',
+    },
+    {
+      chave: 'Não identificado', cor: 'var(--purple)',
+      corFundo: 'rgba(155,138,166,.08)', corBorda: 'rgba(155,138,166,.3)',
+      texto: '<b>Não identificado</b> — a planilha do Projuris não deixou claro se o escritório representa o autor ou o réu nesse processo. Vale checar o cadastro pra não perder esse prazo de vista.',
+    },
+  ];
+  el('poloPriorityBox').innerHTML = polosPrioridade.map(p => {
+    const n = dados.polo_counts[p.chave] || 0;
+    if (!n) return '';
+    return `
+    <div style="display:flex; align-items:center; gap:12px; padding:12px 14px; background:${p.corFundo}; border:1px solid ${p.corBorda}; border-radius:10px;">
+      <div style="font-size:22px; font-weight:800; color:${p.cor}; min-width:38px;">${n}</div>
+      <div style="font-size:12.5px; color:var(--text);">${p.texto}</div>
+    </div>`;
+  }).join('');
 
   // ===== Tabela de processos parados =====
   const POLO_BADGE = {
@@ -1708,31 +1826,12 @@ function renderizarBlocoParados(dados, sufixo) {
 <script>
 function renderizarIndicadores() {
 
-// ===== Tempo médio de ciclo =====
-const cicloKpis = [
-  {label:'Tempo médio geral', value: INDICADORES.ciclo_medio_geral, cls:'teal', sufixo:' dias'},
-];
-document.getElementById('kpiCicloGeral').innerHTML = cicloKpis.map((k, i) => `
-  <div class="kpi ${k.cls}">
-    <div class="label">${k.label}</div>
-    <div class="value">${k.value !== null ? k.value.toLocaleString('pt-BR') + (k.sufixo||'') : 'Sem dado'}</div>
-  </div>
-`).join('');
-
-const cicloRespLabels = Object.keys(INDICADORES.ciclo_por_responsavel);
-setBarHeight('cicloRespChart', cicloRespLabels.length);
-criarGrafico('cicloRespChart', {
-  type:'bar',
-  data:{labels: cicloRespLabels, datasets:[{label:'Dias em média', data: cicloRespLabels.map(r=>INDICADORES.ciclo_por_responsavel[r]), backgroundColor:COLORS.teal, borderRadius:5}]},
-  options:{indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{x:{grid:{color:'#2b2c39'}, title:{display:true, text:'Dias'}}, y:{grid:{display:false}}}}
-});
-
 // ===== Polo no processo (produção geral) =====
 const POLO_COLORS_IND = {
   'Polo Ativo (Autor)': COLORS.red,
   'Polo Passivo (Réu)': COLORS.gray,
   'Misto': COLORS.amber,
-  'Não identificado': COLORS.gray,
+  'Não identificado': COLORS.purple,
 };
 const poloIndLabels = Object.keys(INDICADORES.polo_counts);
 criarGrafico('indicadoresPoloChart', {
@@ -1753,12 +1852,52 @@ criarGrafico('areaDireitoChart', {
   options:{indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{x:{grid:{color:'#2b2c39'}}, y:{grid:{display:false}}}}
 });
 
-// ===== Quem mais cria tarefas =====
-const criadorLabels = Object.keys(INDICADORES.criador_counts);
-setBarHeight('criadorChart', criadorLabels.length);
-criarGrafico('criadorChart', {
+// ===== Processos novos no ano (a partir da planilha de Processos) =====
+// Fonte: PROCESSOS.lista — um item por processo, com "data_distribuicao" no
+// formato dd/mm/aaaa. Diferente de INDICADORES (que já vem pronto por ano,
+// de respTarefas.indicadores_por_ano), a planilha de Processos é carregada
+// inteira de uma vez só, então o filtro por anoSelecionado é feito aqui —
+// assim os três (contador, rank de meses, rank de tipos) se mantêm
+// consistentes com o ano escolhido no topo da página, e crescem sozinhos
+// conforme o cliente for subindo planilhas de Processos mais recentes.
+const processosDoAno = ((PROCESSOS && PROCESSOS.lista) || []).filter(p => {
+  if (!p.data_distribuicao) return false;
+  const partes = p.data_distribuicao.split('/');
+  return partes.length === 3 && parseInt(partes[2], 10) === anoSelecionado;
+});
+document.getElementById('anoProcessosNovos').textContent = anoSelecionado;
+document.getElementById('anoProcessosNovosTipo').textContent = anoSelecionado;
+document.getElementById('countProcessosNovos').textContent = processosDoAno.length.toLocaleString('pt-BR');
+
+// --- Rank por mês: do mês com mais processos novos pro com menos ---
+const NOMES_MESES_PT_IND = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+const contagemProcessosPorMes = new Array(12).fill(0);
+processosDoAno.forEach(p => {
+  const mes = parseInt(p.data_distribuicao.split('/')[1], 10) - 1;
+  if (mes >= 0 && mes <= 11) contagemProcessosPorMes[mes]++;
+});
+const rankMesesProcessos = NOMES_MESES_PT_IND
+  .map((nome, i) => [nome, contagemProcessosPorMes[i]])
+  .filter(([, qtd]) => qtd > 0)
+  .sort((a, b) => b[1] - a[1]);
+setBarHeight('processosNovosMesChart', rankMesesProcessos.length);
+criarGrafico('processosNovosMesChart', {
   type:'bar',
-  data:{labels: criadorLabels, datasets:[{data: criadorLabels.map(c=>INDICADORES.criador_counts[c]), backgroundColor:COLORS.amber, borderRadius:5}]},
+  data:{labels: rankMesesProcessos.map(e => e[0]), datasets:[{data: rankMesesProcessos.map(e => e[1]), backgroundColor:COLORS.teal, borderRadius:5}]},
+  options:{indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{x:{grid:{color:'#2b2c39'}}, y:{grid:{display:false}}}}
+});
+
+// --- Rank por tipo de processo (Área do direito), do mais pro menos frequente ---
+const contagemProcessosPorTipo = {};
+processosDoAno.forEach(p => {
+  const tipo = p.area || 'Não informado';
+  contagemProcessosPorTipo[tipo] = (contagemProcessosPorTipo[tipo] || 0) + 1;
+});
+const rankTiposProcessos = Object.entries(contagemProcessosPorTipo).sort((a, b) => b[1] - a[1]).slice(0, 12);
+setBarHeight('processosNovosTipoChart', rankTiposProcessos.length);
+criarGrafico('processosNovosTipoChart', {
+  type:'bar',
+  data:{labels: rankTiposProcessos.map(e => e[0]), datasets:[{data: rankTiposProcessos.map(e => e[1]), backgroundColor:COLORS.pink, borderRadius:5}]},
   options:{indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{x:{grid:{color:'#2b2c39'}}, y:{grid:{display:false}}}}
 });
 
@@ -2370,7 +2509,7 @@ function renderizarProcessos() {
     'Polo Ativo (Autor)': COLORS.red,
     'Polo Passivo (Réu)': COLORS.gray,
     'Misto': COLORS.amber,
-    'Não identificado': COLORS.gray,
+    'Não identificado': COLORS.purple,
   };
   const poloLabelsProcessos = Object.keys(dados.polo_counts);
   criarGrafico('processosPoloChart', {
@@ -2688,7 +2827,7 @@ function renderizarClientes() {
     'Polo Ativo (Autor)': COLORS.red,
     'Polo Passivo (Réu)': COLORS.gray,
     'Misto': COLORS.amber,
-    'Não identificado': COLORS.gray,
+    'Não identificado': COLORS.purple,
   };
   const poloLabelsClientes = Object.keys(dados.polo_counts);
   criarGrafico('clientesPoloChart', {
@@ -3476,6 +3615,8 @@ function construirContextoApresentacao() {
   const poloNaoIdN = INDICADORES.polo_counts['Não identificado'] || 0;
   const percPoloAtivo = poloTotal ? Math.round((poloAtivoN / poloTotal) * 100) : 0;
   const percPoloPassivo = poloTotal ? Math.round((poloPassivoN / poloTotal) * 100) : 0;
+  const percPoloMisto = poloTotal ? Math.round((poloMistoN / poloTotal) * 100) : 0;
+  const percPoloNaoId = poloTotal ? Math.round((poloNaoIdN / poloTotal) * 100) : 0;
   const percPoloIdentificado = poloTotal ? Math.round(((poloAtivoN + poloPassivoN + poloMistoN) / poloTotal) * 100) : 0;
 
   const totalDelegacao = INDICADORES.autoatribuidas + INDICADORES.delegadas;
@@ -3507,7 +3648,7 @@ function construirContextoApresentacao() {
     catCounts, totalCat,
     mensalVisivel, melhorMes, piorMes, mesMaisPendentes, mediaMensal, tendencia, mensalComVariacao, variacaoMetades,
     maisRapido, maisLento, cicloPeticaoInicial, cicloElaborarPeticaoInicial, mesAtual, mesAnterior,
-    poloTotal, poloAtivoN, poloPassivoN, poloMistoN, poloNaoIdN, percPoloAtivo, percPoloPassivo, percPoloIdentificado,
+    poloTotal, poloAtivoN, poloPassivoN, poloMistoN, poloNaoIdN, percPoloAtivo, percPoloPassivo, percPoloMisto, percPoloNaoId, percPoloIdentificado,
     totalDelegacao, percAutoatribuidas, criadorOrdenados, topCriador,
     totalRecentes, totalCronicos, totalParados, percCronico, recentesAtivo, cronicosAtivo, cronicosPassivo,
     areaRecentesOrdenada, orgaoRecentesOrdenado, areaCronicosOrdenada, orgaoCronicosOrdenado,
@@ -3544,8 +3685,6 @@ const REGISTRO_SLIDES_APRESENTACAO = [
           <div class="apresentacao-kpi"><div class="valor" style="color:var(--green)">${ctx.taxaSucesso}%</div><div class="rotulo">Taxa de sucesso</div></div>
           <div class="apresentacao-kpi"><div class="valor" style="color:var(--purple)">${DATA.processos_distintos.toLocaleString('pt-BR')}</div><div class="rotulo">Processos distintos</div></div>
           <div class="apresentacao-kpi"><div class="valor" style="color:var(--red)">${DATA.total_atrasadas.toLocaleString('pt-BR')}</div><div class="rotulo">Prazos vencidos em aberto</div></div>
-          <div class="apresentacao-kpi"><div class="valor" style="color:var(--teal)">${ctx.cicloElaborarPeticaoInicial !== null ? ctx.cicloElaborarPeticaoInicial.toLocaleString('pt-BR') + ' dias' : '—'}</div><div class="rotulo">Tempo médio p/ elaborar Petição Inicial</div></div>
-          <div class="apresentacao-kpi"><div class="valor" style="color:var(--teal)">${ctx.cicloPeticaoInicial !== null ? ctx.cicloPeticaoInicial.toLocaleString('pt-BR') + ' dias' : '—'}</div><div class="rotulo">Tempo médio (tarefa "Petição Inicial")</div></div>
         </div>
         <div class="slide-mini-kpis" style="margin-top:32px; justify-content:center;">
           <div class="mini-kpi"><div class="valor" style="color:var(--teal)">${DATA.clientes_distintos.toLocaleString('pt-BR')}</div><div class="rotulo">Clientes atendidos</div></div>
@@ -3719,30 +3858,36 @@ const REGISTRO_SLIDES_APRESENTACAO = [
   },
   {
     id: 'polo-geral', nome: 'Polo no processo (produção geral)',
-    html: (ctx) => `
+    html: (ctx) => {
+      const poloCategorias = [
+        { nome: 'Polo Ativo (Autor)', desc: 'buscando o direito do cliente', n: ctx.poloAtivoN, perc: ctx.percPoloAtivo, cor: 'var(--red)' },
+        { nome: 'Polo Passivo (Réu)', desc: 'defendendo o cliente', n: ctx.poloPassivoN, perc: ctx.percPoloPassivo, cor: 'var(--gray)' },
+        { nome: 'Misto', desc: 'processo com os dois polos', n: ctx.poloMistoN, perc: ctx.percPoloMisto, cor: 'var(--amber)' },
+        { nome: 'Não identificado', desc: 'ainda sem o polo cadastrado corretamente', n: ctx.poloNaoIdN, perc: ctx.percPoloNaoId, cor: 'var(--purple)' },
+      ].filter(c => c.n > 0);
+      return `
       <div class="apresentacao-slide">
         <div class="slide-titulo">Quem estamos representando</div>
         <div class="apresentacao-duas-colunas">
           <div style="max-width:360px; margin:0 auto;"><canvas id="apresChartPolo"></canvas></div>
           <div style="text-align:left; display:flex; flex-direction:column; gap:18px;">
-            <div>
-              <div style="font-size:32px; font-weight:800; color:var(--red);">${ctx.poloAtivoN.toLocaleString('pt-BR')} <span style="font-size:17px; color:var(--muted); font-weight:400;">(${ctx.percPoloAtivo}%)</span></div>
-              <div style="font-size:16px; color:var(--muted);">Polo Ativo (Autor) — buscando o direito do cliente</div>
-            </div>
-            <div>
-              <div style="font-size:32px; font-weight:800; color:var(--gray);">${ctx.poloPassivoN.toLocaleString('pt-BR')} <span style="font-size:17px; color:var(--muted); font-weight:400;">(${ctx.percPoloPassivo}%)</span></div>
-              <div style="font-size:16px; color:var(--muted);">Polo Passivo (Réu) — defendendo o cliente</div>
-            </div>
+            ${poloCategorias.map(c => `
+              <div>
+                <div style="font-size:32px; font-weight:800; color:${c.cor};">${c.n.toLocaleString('pt-BR')} <span style="font-size:17px; color:var(--muted); font-weight:400;">(${c.perc}%)</span></div>
+                <div style="font-size:16px; color:var(--muted);">${esc(c.nome)} — ${esc(c.desc)}</div>
+              </div>
+            `).join('')}
             <div class="slide-insight" style="margin-top:6px;">
               <span class="icone">⚖️</span>
               <span>${ctx.percPoloAtivo > ctx.percPoloPassivo
                 ? 'O escritório atua mais como parte que busca o direito do que se defendendo — o que tende a gerar mais urgência nos prazos.'
-                : 'O escritório atua mais defendendo clientes do que processando terceiros.'}</span>
+                : 'O escritório atua mais defendendo clientes do que processando terceiros.'}${ctx.poloNaoIdN > 0 ? ` ${ctx.percPoloNaoId}% dos processos ainda não têm o polo corretamente identificado na base.` : ''}</span>
             </div>
           </div>
         </div>
       </div>
-    `,
+      `;
+    },
   },
   {
     id: 'area', nome: 'Área do direito',
@@ -3783,7 +3928,6 @@ const REGISTRO_SLIDES_APRESENTACAO = [
               <div style="font-size:32px; font-weight:800; color:var(--accent);">${INDICADORES.delegadas.toLocaleString('pt-BR')} <span style="font-size:17px; color:var(--muted); font-weight:400;">(${100-ctx.percAutoatribuidas}%)</span></div>
               <div style="font-size:16px; color:var(--muted);">Delegadas para outra pessoa da equipe</div>
             </div>
-            <div style="font-size:16px; color:var(--muted);">Quem mais cria tarefas: <b style="color:var(--text);">${esc(ctx.topCriador[0])}</b> (${ctx.topCriador[1].toLocaleString('pt-BR')})</div>
             <div class="slide-insight" style="margin-top:4px;">
               <span class="icone">🔁</span>
               <span>${ctx.percAutoatribuidas >= 70
@@ -3990,7 +4134,7 @@ const REGISTRO_SLIDES_APRESENTACAO = [
       if (meses.length < 2) {
         return `
           <div class="apresentacao-slide">
-            <div class="slide-titulo">Melhor mês x pior mês</div>
+            <div class="slide-titulo">Mês mais produtivo x mês menos produtivo</div>
             <div class="slide-subtitulo">Ainda não há dois meses com dados neste ano para comparar.</div>
           </div>
         `;
@@ -4009,7 +4153,7 @@ const REGISTRO_SLIDES_APRESENTACAO = [
       const fmtDeltaGrandePP = (v) => `<span style="color:${v >= 0 ? 'var(--green)' : 'var(--red)'}">${v >= 0 ? '+' : ''}${v}pp</span>`;
       return `
         <div class="apresentacao-slide">
-          <div class="slide-titulo">Melhor mês x pior mês</div>
+          <div class="slide-titulo">Mês mais produtivo x mês menos produtivo</div>
           <div class="slide-subtitulo">${pior.mes_nome} → ${melhor.mes_nome} · média mensal do ano: ${ctx.mediaMensal.toLocaleString('pt-BR')} tarefas</div>
           <div class="apresentacao-duas-colunas" style="margin-top:26px; max-width:900px;">
             <div>
@@ -4153,9 +4297,15 @@ const INICIAR_GRAFICOS_APRESENTACAO = {
     });
   },
   'polo-geral': (canvasId, ctx) => {
+    const poloEntradas = [
+      ['Polo Ativo (Autor)', ctx.poloAtivoN, COLORS.red],
+      ['Polo Passivo (Réu)', ctx.poloPassivoN, COLORS.gray],
+      ['Misto', ctx.poloMistoN, COLORS.amber],
+      ['Não identificado', ctx.poloNaoIdN, COLORS.purple],
+    ].filter(e => e[1] > 0);
     criarGrafico(canvasId, {
       type: 'doughnut',
-      data: { labels: ['Polo Ativo (Autor)', 'Polo Passivo (Réu)'], datasets: [{ data: [ctx.poloAtivoN, ctx.poloPassivoN], backgroundColor: [COLORS.red, COLORS.gray], borderWidth: 3, borderColor: '#0a0a10' }] },
+      data: { labels: poloEntradas.map(e => e[0]), datasets: [{ data: poloEntradas.map(e => e[1]), backgroundColor: poloEntradas.map(e => e[2]), borderWidth: 3, borderColor: '#0a0a10' }] },
       options: { responsive: true, plugins: { legend: { display: false } }, cutout: '68%' },
     });
   },
