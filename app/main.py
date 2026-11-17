@@ -47,7 +47,7 @@ from app.auth import (
 from app.rate_limit import verificar_bloqueio, registrar_falha, registrar_sucesso
 from app.data_processor import (
     processar_tarefas, processar_processos_parados, processar_tarefas_periodo, processar_processos,
-    processar_clientes, processar_tarefas_por_cliente_periodo, processar_sentencas,
+    processar_clientes, processar_tarefas_por_cliente_periodo, processar_sentencas, processar_decisoes,
     validar_planilha_atualizacao, CONFIG_PLANILHAS_ATUALIZACAO,
 )
 from app.cache import atualizar_cache, obter_cache, obter_ultima_sincronizacao
@@ -182,9 +182,10 @@ def _reprocessar_sentencas() -> None:
     """
     data_ref = _data_referencia_configurada()
     try:
-        dados_sentencas = processar_sentencas(
+        dados_sentencas = processar_decisoes(
             settings.CAMINHO_PLANILHA_ANDAMENTOS,
             settings.CAMINHO_PLANILHA_PROCESSOS,
+            settings.CAMINHO_PLANILHA_DECISOES,
             data_referencia=data_ref,
         )
         atualizar_cache("sentencas", dados_sentencas)
@@ -201,6 +202,7 @@ CAMINHO_POR_TIPO_ATUALIZACAO = {
     "processos_parados": settings.CAMINHO_PLANILHA_PROCESSOS_PARADOS,
     "processos": settings.CAMINHO_PLANILHA_PROCESSOS,
     "andamentos": settings.CAMINHO_PLANILHA_ANDAMENTOS,
+    "decisoes": settings.CAMINHO_PLANILHA_DECISOES,
 }
 
 
@@ -221,6 +223,8 @@ def _reprocessar_e_atualizar_cache(tipo: str) -> None:
         atualizar_cache("processos", processar_processos(settings.CAMINHO_PLANILHA_PROCESSOS))
     elif tipo == "andamentos":
         pass  # "andamentos" só alimenta "sentencas" (reprocessada abaixo) — não tem cache próprio de tela.
+    elif tipo == "decisoes":
+        pass  # lista revisada de decisões favoráveis — também só alimenta "sentencas".
     else:
         raise ValueError(f"Tipo desconhecido: {tipo}")
 
@@ -232,12 +236,12 @@ def _reprocessar_e_atualizar_cache(tipo: str) -> None:
     # formam Clientes (sem quebrar a atualização da planilha principal se as
     # outras 2 ainda não existirem no servidor — _reprocessar_clientes já
     # trata isso).
-    if tipo != "andamentos":
+    if tipo not in ("andamentos", "decisoes"):
         _reprocessar_clientes()
     # "Sentenças favoráveis" depende de "andamentos" + "processos" — qualquer
     # uma das duas sendo trocada aqui pode mudar esses dados, então
     # reprocessa também (mesmo raciocínio de _reprocessar_clientes acima).
-    if tipo in ("andamentos", "processos"):
+    if tipo in ("andamentos", "processos", "decisoes"):
         _reprocessar_sentencas()
 
 

@@ -3036,19 +3036,16 @@ async function aplicarTarefasPeriodoClientes() {
 
 <div class="card full" style="margin-bottom:16px;">
   <h2><span class="dot" style="background:var(--green)"></span>Sentenças e acordos favoráveis em <span id="anoSentencas"></span></h2>
-  <div class="upload-info">
-    Desfechos de mérito e acordos extraídos automaticamente da planilha de Andamentos, cruzados com o polo do cliente em cada processo —
-    <b>“Parcial” e “Revisar” precisam de uma olhada antes de divulgar</b>, pois o texto do andamento, por si só, não deixa claro o tamanho do ganho ou os termos do acordo.
-  </div>
+  <div class="upload-info" id="infoSentencas"></div>
   <div class="kpi-grid" id="kpiGridSentencas"></div>
   <div class="filters">
-    <input type="text" id="searchSentencas" placeholder="Buscar por processo, cliente, resumo...">
+    <input type="text" id="searchSentencas" placeholder="Buscar por processo, cliente, parte contrária, resumo...">
     <select id="filterClassificacaoSentencas"><option value="">Todas as classificações</option></select>
   </div>
   <div class="table-wrap" style="max-height:480px;">
     <table id="sentencasTable">
       <thead>
-        <tr><th>Data</th><th>Processo</th><th>Cliente</th><th>Classificação</th><th>Resumo</th></tr>
+        <tr><th>Data</th><th>Processo</th><th>Cliente</th><th>Parte contrária</th><th>Classificação</th><th>Resumo</th></tr>
       </thead>
       <tbody></tbody>
     </table>
@@ -3110,6 +3107,11 @@ function renderizarNovidades() {
   // ===== Sentenças e acordos favoráveis (planilha de Andamentos, ver /api/sentencas) =====
   const dadosSentencas = SENTENCAS || { ano: anoSelecionado, total: 0, classificacao_counts: {}, lista: [] };
   document.getElementById('anoSentencas').textContent = dadosSentencas.ano || anoSelecionado;
+  document.getElementById('infoSentencas').innerHTML = dadosSentencas.fonte === 'lista_revisada'
+    ? `Decisões favoráveis lidas no texto completo das publicações do Projuris (lista revisada até <b>${esc(dadosSentencas.data_ultima_revisao) || '—'}</b>), mais os acordos homologados. ` +
+      `Desfechos detectados automaticamente depois dessa data aparecem como <b>“Revisar”</b> até a próxima revisão da lista (atualizada pela tela de Atualização → “Decisões favoráveis”).`
+    : `Desfechos de mérito e acordos extraídos automaticamente dos andamentos do Projuris, cruzados com o polo do cliente — ` +
+      `<b>“Parcial” e “Revisar” precisam de uma olhada antes de divulgar</b>. Para a lista completa, envie a planilha “Decisões favoráveis (lista revisada)” na tela de Atualização.`;
 
   // "Desfavorável" não entra aqui de propósito — a aba é só sentenças/acordos
   // favoráveis; a API já nem devolve esse valor (ver processar_sentencas).
@@ -3132,6 +3134,7 @@ function renderizarNovidades() {
         <td>${esc(s.data) || '—'}</td>
         <td>${esc(s.numero_cnj || s.identificador) || '—'}</td>
         <td>${esc(s.cliente) || '—'}</td>
+        <td>${esc(s.parte_contraria) || '—'}</td>
         <td>${CLASSIFICACAO_BADGE_SENTENCAS[s.classificacao] || esc(s.classificacao) || '—'}</td>
         <td>${esc(s.resumo) || '—'}</td>
       </tr>
@@ -3149,7 +3152,7 @@ function renderizarNovidades() {
     const q = inputBuscaSentencas.value.toLowerCase();
     const classificacao = selClassificacaoSentencas.value;
     const filtrado = dadosSentencas.lista.filter(s => {
-      const matchesQ = !q || [s.numero_cnj, s.identificador, s.cliente, s.resumo].filter(Boolean).join(' ').toLowerCase().includes(q);
+      const matchesQ = !q || [s.numero_cnj, s.identificador, s.cliente, s.parte_contraria, s.orgao, s.resumo].filter(Boolean).join(' ').toLowerCase().includes(q);
       const matchesClassificacao = !classificacao || s.classificacao === classificacao;
       return matchesQ && matchesClassificacao;
     });
@@ -3350,6 +3353,7 @@ function renderizarNovidades() {
         <option value="processos_parados">Processos Parados</option>
         <option value="processos">Processos</option>
         <option value="andamentos">Andamentos</option>
+        <option value="decisoes">Decisões favoráveis (lista revisada)</option>
       </select>
     </div>
     <div class="login-field" style="margin-bottom:0;">

@@ -32,6 +32,8 @@ passar a ser, essas funções são o lugar certo para adicioná-los.
 
 import re
 import unicodedata
+from collections import Counter
+from pathlib import Path
 import pandas as pd
 from datetime import datetime
 
@@ -1130,6 +1132,111 @@ def processar_sentencas(caminho_andamentos: str, caminho_processos: str, data_re
 
 
 # ---------------------------------------------------------------------------
+# Lista REVISADA de decisões favoráveis. O detector automático acima só
+# enxerga os andamentos curtos e padronizados do Projuris ("Julgado
+# procedente o pedido", "Conhecido o recurso e provido"...), mas na maioria
+# dos casos o resultado só aparece no TEXTO COMPLETO da publicação
+# (intimação/acórdão colado no andamento), onde dá pra saber quem recorreu e
+# a favor de quem foi — e isso exige leitura, não dá pra classificar só com
+# padrão de texto sem errar a direção (testado: um padrão amplo achava 337
+# processos candidatos para ~100 decisões favoráveis de fato).
+#
+# Por isso a aba usa uma planilha "Decisões" revisada (data, número CNJ,
+# cliente, parte contrária, órgão, classificação e resumo), enviada pela tela
+# de Atualização como qualquer outra planilha. Por cima dela entram,
+# automaticamente: os acordos homologados (detecção confiável) e, como
+# "Revisar", qualquer desfecho que o detector automático achar DEPOIS da data
+# mais recente da lista — assim decisão nova não fica invisível até a
+# próxima revisão. Sem a planilha revisada, a aba volta a mostrar só o
+# detector automático, como antes.
+# ---------------------------------------------------------------------------
+
+COLUNAS_DECISOES_REVISADAS = ["Data", "Número CNJ", "Cliente", "Classificação", "Resumo da decisão"]
+
+
+def _ler_decisoes_revisadas(caminho_decisoes: str, ano: int) -> list[dict]:
+    linha = _localizar_linha_cabecalho(caminho_decisoes, "Número CNJ", sheet_name="Decisões")
+    df = _ler_excel(caminho_decisoes, sheet_name="Decisões", header=linha or 0, dtype=str).fillna("")
+    datas_txt = df["Data"].astype(str).str.strip()
+    # Aceita tanto texto "dd/mm/aaaa" quanto data de verdade do Excel (caso alguém edite a planilha)
+    df["Data_dt"] = pd.to_datetime(datas_txt, format="%d/%m/%Y", errors="coerce").fillna(
+        pd.to_datetime(datas_txt, errors="coerce")
+    )
+    df = df[df["Data_dt"].dt.year == ano]
+
+    lista = []
+    for _, r in df.iterrows():
+        classificacao = str(r["Classificação"]).strip().capitalize()
+        if classificacao not in ("Favorável", "Parcial", "Acordo"):
+            continue  # a lista revisada é só do que foi favorável ao cliente
+        resumo = _texto_seguro(r["Resumo da decisão"], tamanho_max=300)
+        lista.append({
+            "identificador": _texto_seguro(r.get("Identificador", "")),
+            "numero_cnj": _texto_seguro(r["Número CNJ"]),
+            "data": r["Data_dt"].strftime("%d/%m/%Y"),
+            "descricao_evento": resumo,
+            "cliente": _texto_seguro(r["Cliente"], tamanho_max=160),
+            "parte_contraria": _texto_seguro(r.get("Parte contrária", ""), tamanho_max=160),
+            "orgao": _texto_seguro(r.get("Órgão", "")),
+            "area": None,
+            "classificacao": classificacao,
+            "resumo": resumo,
+            "fonte": "Lista revisada",
+        })
+    return lista
+
+
+def processar_decisoes(caminho_andamentos: str, caminho_processos: str, caminho_decisoes: str | None,
+                       data_referencia: datetime | None = None) -> dict:
+    """
+    Monta a aba "Sentenças e acordos favoráveis": lista revisada (se existir)
+    + acordos homologados + desfechos novos detectados depois da última
+    revisão (como "Revisar"). Ver o comentário grande acima.
+    """
+    ano = (data_referencia or datetime.now()).year
+    tem_revisada = bool(caminho_decisoes) and Path(caminho_decisoes).exists()
+
+    try:
+        automatico = processar_sentencas(caminho_andamentos, caminho_processos, data_referencia=data_referencia)
+    except FileNotFoundError:
+        if not tem_revisada:
+            raise
+        automatico = {"lista": []}
+
+    if not tem_revisada:
+        automatico["fonte"] = "automatica"
+        automatico["data_ultima_revisao"] = None
+        return automatico
+
+    revisadas = _ler_decisoes_revisadas(caminho_decisoes, ano)
+    datas = [datetime.strptime(i["data"], "%d/%m/%Y") for i in revisadas]
+    corte = max(datas) if datas else None
+
+    lista = list(revisadas)
+    for item in automatico["lista"]:
+        data_item = datetime.strptime(item["data"], "%d/%m/%Y")
+        if item["classificacao"] == "Acordo":
+            lista.append({**item, "fonte": "Andamento do Projuris"})
+        elif corte is None or data_item > corte:
+            lista.append({
+                **item,
+                "classificacao": "Revisar",
+                "resumo": f'{item["resumo"]} (detectado automaticamente depois da última revisão da lista — conferir antes de divulgar)',
+                "fonte": "Andamento do Projuris",
+            })
+
+    lista.sort(key=lambda i: datetime.strptime(i["data"], "%d/%m/%Y"), reverse=True)
+    return {
+        "ano": ano,
+        "total": len(lista),
+        "classificacao_counts": dict(Counter(i["classificacao"] for i in lista)),
+        "lista": lista,
+        "fonte": "lista_revisada",
+        "data_ultima_revisao": corte.strftime("%d/%m/%Y") if corte else None,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Visão "Clientes" — não existe uma planilha de cadastro de clientes própria
 # no Projuris exportado, então esta função AGREGA, por cliente, o que já está
 # espalhado nas 3 planilhas oficiais (Processos, Processos Parados e
@@ -1418,6 +1525,12 @@ CONFIG_PLANILHAS_ATUALIZACAO = {
         # manualmente) — usado só aqui, nas outras 3 planilhas (bem
         # menores) o motor padrão continua de boa.
         "engine_rapido": "calamine",
+    },
+    "decisoes": {
+        "nome_exibicao": "Decisões favoráveis (lista revisada)",
+        "sheet_name": "Decisões",
+        "coluna_marcador": "Número CNJ",
+        "colunas_obrigatorias": COLUNAS_DECISOES_REVISADAS,
     },
 }
 

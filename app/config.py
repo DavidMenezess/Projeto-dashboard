@@ -25,6 +25,8 @@ class Settings(BaseSettings):
     CAMINHO_PLANILHA_PROCESSOS_PARADOS: str = "./data/processos_parados.xlsx"
     CAMINHO_PLANILHA_PROCESSOS: str = "./data/processos.xlsx"
     CAMINHO_PLANILHA_ANDAMENTOS: str = "./data/andamentos.xlsx"
+    # Lista revisada de decisões favoráveis (lida no texto completo das publicações) — ver processar_decisoes
+    CAMINHO_PLANILHA_DECISOES: str = "./data/decisoes_favoraveis.xlsx"
 
     # --- CORS ---
     ORIGENS_PERMITIDAS: str = "http://localhost:3000"
