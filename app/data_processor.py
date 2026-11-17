@@ -959,9 +959,11 @@ def _classificar_desfecho_andamento(descricao_norm: str, polo_cliente: str, clie
     if "homolog" in texto:
         nome_outra_parte = _primeiro_nome_de(partes_passivas) if polo_cliente == "Polo Ativo (Autor)" else _primeiro_nome_de(partes_ativas)
         if "desist" in texto:
-            resumo = f"Desistência do recurso homologada no processo de {nome_cliente}" + (f", contra {nome_outra_parte}" if nome_outra_parte else "") + "."
-        else:
-            resumo = f"Acordo homologado no processo de {nome_cliente}" + (f", com {nome_outra_parte}" if nome_outra_parte else "") + "."
+            # Desistência de recurso não é acordo — e o andamento não diz QUEM desistiu,
+            # então não dá pra saber se foi bom ou ruim para o cliente.
+            resumo = f"Desistência de recurso homologada no processo de {nome_cliente}" + (f", contra {nome_outra_parte}" if nome_outra_parte else "") + " — conferir quem desistiu."
+            return "Revisar", resumo
+        resumo = f"Acordo homologado no processo de {nome_cliente}" + (f", com {nome_outra_parte}" if nome_outra_parte else "") + "."
         return "Acordo", resumo
 
     # "Conhecido o recurso ... e provido/não-provido/desprovido" — resultado de
@@ -1212,12 +1214,20 @@ def processar_decisoes(caminho_andamentos: str, caminho_processos: str, caminho_
     datas = [datetime.strptime(i["data"], "%d/%m/%Y") for i in revisadas]
     corte = max(datas) if datas else None
 
+    # A planilha revisada já traz TUDO até a data dela (decisões e acordos,
+    # inclusive acordos que só aparecem no texto da publicação). Do detector
+    # automático só entra o que for posterior a essa data: acordo homologado
+    # continua "Acordo" (detecção confiável); o resto entra como "Revisar".
     lista = list(revisadas)
+    cnjs_revisados = {i["numero_cnj"] for i in revisadas if i["classificacao"] == "Acordo"}
     for item in automatico["lista"]:
         data_item = datetime.strptime(item["data"], "%d/%m/%Y")
+        if corte is not None and data_item <= corte:
+            continue
         if item["classificacao"] == "Acordo":
-            lista.append({**item, "fonte": "Andamento do Projuris"})
-        elif corte is None or data_item > corte:
+            if item.get("numero_cnj") not in cnjs_revisados:
+                lista.append({**item, "fonte": "Andamento do Projuris"})
+        else:
             lista.append({
                 **item,
                 "classificacao": "Revisar",
