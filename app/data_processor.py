@@ -805,6 +805,30 @@ def _localizar_linha_cabecalho_andamentos(caminho_arquivo: str, max_linhas: int 
     return linha if linha is not None else 2
 
 
+# Número CNJ: NNNNNNN-DD.AAAA.J.TR.OOOO — AAAA é o ano em que o processo foi
+# ajuizado; OOOO "0000" (ou TR "00", ou origem 9xxx de turma recursal) indica
+# processo que nasceu direto num tribunal (agravo, mandado de segurança,
+# recurso, ação originária), não uma ação nova de 1º grau.
+PADRAO_NUMERO_CNJ = re.compile(r"^\s*\d{7}-\d{2}\.(\d{4})\.(\d)\.(\d{2})\.(\d{4})\s*$")
+
+
+def _ano_e_tipo_de_entrada(numero_cnj, data_distribuicao) -> tuple[int | None, str]:
+    """
+    Ano de ajuizamento do processo e se ele é uma ação de 1º grau ou algo
+    aberto direto num tribunal. Usa o ano do número CNJ — a coluna "Data
+    distribuição" do Projuris vem vazia na grande maioria dos processos
+    (só ~30 de quase 3 mil preenchidas), então contar "novas ações" por ela
+    subestimava muito o número real. Sem CNJ válido, cai para a data de
+    distribuição.
+    """
+    m = PADRAO_NUMERO_CNJ.match(str(numero_cnj or ""))
+    if not m:
+        ano = data_distribuicao.year if pd.notna(data_distribuicao) else None
+        return ano, "Ação em 1º grau"
+    em_tribunal = m.group(4) == "0000" or m.group(4).startswith("9") or m.group(3) == "00"
+    return int(m.group(1)), ("Recurso/ação em tribunal" if em_tribunal else "Ação em 1º grau")
+
+
 def processar_processos(caminho_arquivo: str) -> dict:
     """
     Lê a planilha "Processos" exportada do Projuris (aba "Processos" — a aba
@@ -836,6 +860,11 @@ def processar_processos(caminho_arquivo: str) -> dict:
     qtd_valores_suspeitos = 0
     for _, row in df.iterrows():
         data_distribuicao = row["Data distribuição"]
+        ano_ajuizamento, tipo_entrada = _ano_e_tipo_de_entrada(row["Número CNJ"], data_distribuicao)
+        # Data em que o processo "entrou": distribuição se houver, senão a data
+        # em que foi cadastrado no Projuris (usada só para o rank por mês).
+        data_inclusao = pd.to_datetime(row.get("Data inclusão"), dayfirst=True, errors="coerce")
+        data_entrada = data_distribuicao if pd.notna(data_distribuicao) else data_inclusao
         valor_causa = float(row["Valor ação"]) if pd.notna(row["Valor ação"]) else None
         valor_suspeito = valor_causa is not None and valor_causa > LIMITE_SANIDADE_VALOR_CAUSA
         if valor_suspeito:
@@ -852,6 +881,9 @@ def processar_processos(caminho_arquivo: str) -> dict:
             "instancia": _texto_seguro(row["Instância"]),
             "area": _texto_seguro(row["Área"]),
             "data_distribuicao": data_distribuicao.strftime("%d/%m/%Y") if pd.notna(data_distribuicao) else None,
+            "ano_ajuizamento": ano_ajuizamento,
+            "tipo_entrada": tipo_entrada,
+            "data_entrada": data_entrada.strftime("%d/%m/%Y") if pd.notna(data_entrada) else None,
             "valor_causa": valor_causa,
             "valor_causa_suspeito": valor_suspeito,
             "data_ultimo_andamento": _texto_seguro(row["Data dos últimos andamentos"]),

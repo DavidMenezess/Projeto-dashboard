@@ -1864,11 +1864,9 @@ criarGrafico('areaDireitoChart', {
 // assim os três (contador, rank de meses, rank de tipos) se mantêm
 // consistentes com o ano escolhido no topo da página, e crescem sozinhos
 // conforme o cliente for subindo planilhas de Processos mais recentes.
-const processosDoAno = ((PROCESSOS && PROCESSOS.lista) || []).filter(p => {
-  if (!p.data_distribuicao) return false;
-  const partes = p.data_distribuicao.split('/');
-  return partes.length === 3 && parseInt(partes[2], 10) === anoSelecionado;
-});
+// "ano_ajuizamento" vem do ano do número CNJ (a "Data distribuição" do Projuris
+// vem vazia na maioria dos processos — ver _ano_e_tipo_de_entrada no back-end).
+const processosDoAno = ((PROCESSOS && PROCESSOS.lista) || []).filter(p => p.ano_ajuizamento === anoSelecionado);
 document.getElementById('anoProcessosNovos').textContent = anoSelecionado;
 document.getElementById('anoProcessosNovosTipo').textContent = anoSelecionado;
 document.getElementById('countProcessosNovos').textContent = processosDoAno.length.toLocaleString('pt-BR');
@@ -1877,7 +1875,8 @@ document.getElementById('countProcessosNovos').textContent = processosDoAno.leng
 const NOMES_MESES_PT_IND = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
 const contagemProcessosPorMes = new Array(12).fill(0);
 processosDoAno.forEach(p => {
-  const mes = parseInt(p.data_distribuicao.split('/')[1], 10) - 1;
+  if (!p.data_entrada) return;
+  const mes = parseInt(p.data_entrada.split('/')[1], 10) - 1;
   if (mes >= 0 && mes <= 11) contagemProcessosPorMes[mes]++;
 });
 const rankMesesProcessos = NOMES_MESES_PT_IND
@@ -3019,7 +3018,7 @@ async function aplicarTarefasPeriodoClientes() {
 <div class="card full" style="margin-bottom:32px;">
   <h2><span class="dot" style="background:var(--teal)"></span>Novas ações em <span id="anoNovasAcoes"></span> (<span id="countNovasAcoes"></span>)</h2>
   <div class="upload-info">
-    Todos os processos com data de distribuição em <span id="anoNovasAcoes2"></span>, identificados pelo próprio número do processo — atualiza sozinho conforme a planilha de Processos é enviada na aba Atualização.
+    Processos ajuizados em <span id="anoNovasAcoes2"></span>, pelo ano do próprio número do processo (CNJ): <b id="resumoNovasAcoes"></b>. Atualiza sozinho conforme a planilha de Processos é enviada na aba Atualização.
   </div>
   <div class="filters">
     <input type="text" id="searchNovasAcoes" placeholder="Buscar por processo, cliente, área...">
@@ -3027,7 +3026,7 @@ async function aplicarTarefasPeriodoClientes() {
   <div class="table-wrap" style="max-height:480px;">
     <table id="novasAcoesTable">
       <thead>
-        <tr><th>Processo</th><th>Cliente</th><th>Área</th><th>Situação</th><th>Distribuição</th></tr>
+        <tr><th>Processo</th><th>Cliente</th><th>Área</th><th>Tipo</th><th>Situação</th></tr>
       </thead>
       <tbody></tbody>
     </table>
@@ -3069,17 +3068,15 @@ function renderizarNovidades() {
   // Mesmo filtro usado em renderizarIndicadores() para "processosDoAno" — refeito aqui porque
   // aquela variável é local aquela função; mantém os dois pontos consistentes por filtrarem
   // exatamente da mesma forma (mesmo campo "data_distribuicao", mesmo anoSelecionado do topo).
-  const novasAcoesDoAno = ((PROCESSOS && PROCESSOS.lista) || []).filter(p => {
-    if (!p.data_distribuicao) return false;
-    const partes = p.data_distribuicao.split('/');
-    return partes.length === 3 && parseInt(partes[2], 10) === anoSelecionado;
-  }).sort((a, b) => {
-    // mais recentes primeiro
-    const [da, ma, ya] = a.data_distribuicao.split('/');
-    const [db, mb, yb] = b.data_distribuicao.split('/');
-    return new Date(yb, mb - 1, db) - new Date(ya, ma - 1, da);
-  });
+  const novasAcoesDoAno = ((PROCESSOS && PROCESSOS.lista) || [])
+    .filter(p => p.ano_ajuizamento === anoSelecionado)
+    // mais recentes primeiro (identificador do Projuris cresce conforme o processo é cadastrado)
+    .sort((a, b) => String(b.identificador || '').localeCompare(String(a.identificador || '')));
   document.getElementById('countNovasAcoes').textContent = novasAcoesDoAno.length.toLocaleString('pt-BR');
+  const qtdPrimeiroGrau = novasAcoesDoAno.filter(p => p.tipo_entrada === 'Ação em 1º grau').length;
+  const qtdTribunal = novasAcoesDoAno.length - qtdPrimeiroGrau;
+  document.getElementById('resumoNovasAcoes').textContent =
+    `${qtdPrimeiroGrau.toLocaleString('pt-BR')} ações em 1º grau e ${qtdTribunal.toLocaleString('pt-BR')} recursos/ações abertos direto nos tribunais`;
 
   function novaAcaoRow(p) {
     return `
@@ -3087,8 +3084,8 @@ function renderizarNovidades() {
         <td>${esc(p.numero_cnj || p.identificador) || '—'}</td>
         <td>${esc(p.cliente) || '—'}</td>
         <td>${esc(p.area) || '—'}</td>
+        <td>${esc(p.tipo_entrada) || '—'}</td>
         <td>${esc(p.situacao) || '—'}</td>
-        <td>${esc(p.data_distribuicao) || '—'}</td>
       </tr>
     `;
   }
@@ -3099,7 +3096,7 @@ function renderizarNovidades() {
   inputBuscaNovasAcoes.oninput = () => {
     const q = inputBuscaNovasAcoes.value.toLowerCase();
     const filtrado = !q ? novasAcoesDoAno : novasAcoesDoAno.filter(p =>
-      [p.numero_cnj, p.identificador, p.cliente, p.area].filter(Boolean).join(' ').toLowerCase().includes(q)
+      [p.numero_cnj, p.identificador, p.cliente, p.area, p.tipo_entrada].filter(Boolean).join(' ').toLowerCase().includes(q)
     );
     novasAcoesPager.setData(filtrado);
   };
