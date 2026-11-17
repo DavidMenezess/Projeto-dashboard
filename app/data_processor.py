@@ -788,6 +788,21 @@ def _localizar_linha_cabecalho_processos(caminho_arquivo: str, max_linhas: int =
     return linha if linha is not None else 2
 
 
+def _localizar_linha_cabecalho_andamentos(caminho_arquivo: str, max_linhas: int = 40) -> int:
+    """
+    Ver _localizar_linha_cabecalho. A planilha "Andamentos" (relatório novo,
+    bem mais granular que os outros 3: uma linha por MOVIMENTAÇÃO/intimação
+    de cada processo, não uma por processo) tem duas abas — "Andamentos"
+    (os dados) e "Filtros" (só documenta os filtros usados na exportação,
+    sem dado nenhum, igual à aba "Filtros" de Processos) — por isso o
+    sheet_name é sempre fixado aqui. Procura "Numeração Padrão CNJ" por ser
+    uma coluna exclusiva dessa planilha (não existe com esse nome em nenhuma
+    das outras 3), em vez de confiar num número de linha fixo.
+    """
+    linha = _localizar_linha_cabecalho(caminho_arquivo, "Numeração Padrão CNJ", sheet_name="Andamentos", max_linhas=max_linhas)
+    return linha if linha is not None else 2
+
+
 def processar_processos(caminho_arquivo: str) -> dict:
     """
     Lê a planilha "Processos" exportada do Projuris (aba "Processos" — a aba
@@ -828,6 +843,7 @@ def processar_processos(caminho_arquivo: str) -> dict:
 
         lista.append({
             "identificador": _texto_seguro(row["Identificador"]),
+            "numero_cnj": _texto_seguro(row["Número CNJ"]),
             "assunto": _texto_seguro(row["Assunto"], tamanho_max=160),
             "situacao": _texto_seguro(row["Situação"]),
             "justica": _texto_seguro(row["Justiça"]),
@@ -856,6 +872,211 @@ def processar_processos(caminho_arquivo: str) -> dict:
         # processo foi deixado de fora dessa soma, pra não sumir em silêncio.
         "valor_total_causa": round(valor_total_causa, 2),
         "qtd_valores_suspeitos": qtd_valores_suspeitos,
+        "lista": lista,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Visão "Sentenças e acordos favoráveis" — a pedido do cliente, que queria
+# uma aba mostrando as sentenças, acordos e recursos favoráveis ao escritório
+# (ou ao cliente dele) no ano, com um pequeno resumo de cada caso.
+#
+# Essa informação NÃO existe em nenhuma das 3 planilhas oficiais (Tarefas,
+# Processos Parados, Processos) — as colunas feitas pra isso na planilha de
+# Processos ("Resultado", "Transitado em julgado", "Descrição do
+# encerramento") vêm 100% vazias em todas as exportações vistas até agora.
+#
+# A planilha "Andamentos" (relatório novo, com uma linha por MOVIMENTAÇÃO/
+# intimação de cada processo — não uma por processo) tem, dentro do texto
+# bruto dos boletins do tribunal, alguns eventos com descrição PADRONIZADA
+# pelo próprio Projuris (ex: "Julgado procedente o pedido", "Homologada a
+# Transação") que são um sinal confiável de desfecho de mérito ou acordo —
+# diferente do resto da planilha, que é só o boletim cru da intimação
+# (ex: "CUMPRIMENTO DE SENTENÇA" aparecendo só porque é o nome da classe do
+# processo, não porque o processo foi sentenciado).
+#
+# A classificação de favorável/desfavorável é automática: cruza o resultado
+# ("procedente"/"improcedente") com o polo do CLIENTE no processo (coluna
+# "Cliente" da planilha de Processos, já calculado por _classifica_polo) —
+# "procedente" é bom para quem pediu (polo ativo) e mau para quem foi
+# acionado (polo passivo), e vice-versa para "improcedente". Isso é uma
+# aproximação jurídica razoável, não uma certeza: casos "procedente EM
+# PARTE" são ambíguos por natureza (não dá pra saber se a parte concedida
+# foi grande ou pequena só pelo texto do andamento) e ficam marcados como
+# "Parcial"; processos com polo "Misto" ou "Não identificado" (cliente nos
+# dois lados, ou papel não reconhecido) ficam marcados como "Revisar" em vez
+# de arriscar uma classificação errada. O resumo de cada caso também é
+# gerado automaticamente a partir do nome do cliente e da parte contrária —
+# não substitui o advogado revisar o caso antes de divulgar.
+# ---------------------------------------------------------------------------
+
+PADRAO_DESFECHO_ANDAMENTO = re.compile(
+    r"julgad[oa]s?\s*(?:parcialmente\s*)?(?:im)?procedentes?"
+    r"|homologad[ao]\s*(?:a\s*)?(?:transa[çc][ãa]o|desist[êe]ncia)",
+    re.IGNORECASE,
+)
+
+# Descrições "limpas" do Projuris não passam disso — qualquer coisa maior é
+# quase certamente o boletim cru da intimação (texto jurídico longo, com
+# "Processo:", nomes de partes, OAB etc. colados), não um evento padronizado.
+TAMANHO_MAX_DESCRICAO_ANDAMENTO_LIMPA = 200
+
+
+def _normalizar_descricao_andamento(descricao: str) -> str:
+    """
+    Alguns andamentos vêm duplicados dentro do próprio texto, tipo 'Julgado
+    procedente o pedido - Julgado procedente o pedido' — comum o Projuris
+    repetir a mesma frase antes e depois do ' - '. Mantém só a primeira
+    metade quando as duas são iguais, para o resumo não ficar redobrado.
+    """
+    texto = descricao.strip()
+    if " - " in texto:
+        esquerda, _, direita = texto.partition(" - ")
+        if esquerda.strip().lower() == direita.strip().lower():
+            return esquerda.strip()
+    return texto
+
+
+def _primeiro_nome_de(texto) -> str | None:
+    """Primeiro nome (sem o papel entre parênteses) de uma coluna 'Fulano (Autor), Beltrano (Réu)'."""
+    pares = _extrai_nomes_papeis(texto)
+    return pares[0][0] if pares else None
+
+
+def _classificar_desfecho_andamento(descricao_norm: str, polo_cliente: str, cliente_texto, partes_ativas, partes_passivas) -> tuple[str, str]:
+    """
+    Devolve (classificacao, resumo) para UM andamento de desfecho já
+    identificado por PADRAO_DESFECHO_ANDAMENTO. Ver o comentário acima da
+    constante para a lógica de classificação e suas limitações.
+    classificacao é um de: "Favorável", "Desfavorável", "Parcial", "Acordo", "Revisar".
+    """
+    texto = descricao_norm.lower()
+    nome_cliente = _primeiro_nome_de(cliente_texto) or "o cliente"
+
+    if "homolog" in texto:
+        nome_outra_parte = _primeiro_nome_de(partes_passivas) if polo_cliente == "Polo Ativo (Autor)" else _primeiro_nome_de(partes_ativas)
+        if "desist" in texto:
+            resumo = f"Desistência do recurso homologada no processo de {nome_cliente}" + (f", contra {nome_outra_parte}" if nome_outra_parte else "") + "."
+        else:
+            resumo = f"Acordo homologado no processo de {nome_cliente}" + (f", com {nome_outra_parte}" if nome_outra_parte else "") + "."
+        return "Acordo", resumo
+
+    em_parte = "em parte" in texto or "parcialmente" in texto
+    improcedente = "improcedente" in texto
+
+    if polo_cliente not in ("Polo Ativo (Autor)", "Polo Passivo (Réu)"):
+        return "Revisar", (
+            f"Pedido julgado {'improcedente' if improcedente else 'procedente'} no processo de {nome_cliente} — "
+            f"não foi possível identificar automaticamente se {nome_cliente} é autor ou réu neste processo, revisar."
+        )
+
+    eh_autor = polo_cliente == "Polo Ativo (Autor)"
+    nome_outra_parte = _primeiro_nome_de(partes_passivas) if eh_autor else _primeiro_nome_de(partes_ativas)
+    contra_quem = f" contra {nome_outra_parte}" if nome_outra_parte else ""
+    de_quem = f" de {nome_outra_parte}" if nome_outra_parte else ""
+
+    if em_parte:
+        if eh_autor:
+            resumo = f"Pedido de {nome_cliente} julgado procedente em parte{contra_quem} — favorabilidade parcial, revisar."
+        else:
+            resumo = f"Pedido{de_quem} contra {nome_cliente} julgado procedente em parte — favorabilidade parcial, revisar."
+        return "Parcial", resumo
+
+    favoravel = (eh_autor and not improcedente) or (not eh_autor and improcedente)
+    classificacao = "Favorável" if favoravel else "Desfavorável"
+
+    if eh_autor:
+        resultado_txt = "improcedente" if improcedente else "procedente"
+        resumo = f"Pedido de {nome_cliente} julgado {resultado_txt}{contra_quem}."
+    else:
+        resultado_txt = "improcedente" if improcedente else "procedente"
+        resumo = f"Pedido{de_quem} contra {nome_cliente} julgado {resultado_txt}."
+
+    return classificacao, resumo
+
+
+def processar_sentencas(caminho_andamentos: str, caminho_processos: str, data_referencia: datetime | None = None) -> dict:
+    """
+    Lê a planilha "Andamentos" (histórico completo de movimentações de cada
+    processo) e devolve os desfechos de mérito/acordo do ano atual (ou do ano
+    de `data_referencia`, se informado — mesmo mecanismo de DATA_REFERENCIA_TESTE
+    usado no resto da API), cruzados com a planilha "Processos" para saber o
+    polo do cliente e classificar automaticamente como favorável ao escritório
+    ou não. Ver o comentário grande acima de PADRAO_DESFECHO_ANDAMENTO para a
+    lógica completa e suas limitações.
+
+    Quando um processo tem mais de um andamento de desfecho no ano (comum em
+    casos que passam por 1ª instância e depois recurso), fica só o mais
+    recente — representa melhor a situação atual do caso do que listar fases
+    intermediárias já superadas.
+    """
+    ano = (data_referencia or datetime.now()).year
+
+    linha_and = _localizar_linha_cabecalho_andamentos(caminho_andamentos)
+    df = _ler_excel(caminho_andamentos, sheet_name="Andamentos", header=linha_and)
+    df = df[df["Identificador"].notna()].copy()
+    df["Data_dt"] = pd.to_datetime(df["Data"], format="%d/%m/%Y", errors="coerce")
+    df = df[df["Data_dt"].dt.year == ano]
+
+    descricao_str = df["Descrição"].astype(str)
+    mask_desfecho = descricao_str.str.contains(PADRAO_DESFECHO_ANDAMENTO, na=False)
+    # Exclui o boletim cru da intimação: sempre tem "Processo:" colado no
+    # início (metadado do tribunal) e é bem mais longo que uma descrição
+    # padronizada do Projuris — ver TAMANHO_MAX_DESCRICAO_ANDAMENTO_LIMPA.
+    mask_boletim_bruto = descricao_str.str.contains("Processo:", na=False) | (descricao_str.str.len() > TAMANHO_MAX_DESCRICAO_ANDAMENTO_LIMPA)
+    df = df[mask_desfecho & ~mask_boletim_bruto].copy()
+
+    if df.empty:
+        return {"ano": ano, "total": 0, "classificacao_counts": {}, "lista": []}
+
+    df["descricao_norm"] = descricao_str.loc[df.index].apply(_normalizar_descricao_andamento)
+    # Um processo pode ter o mesmo desfecho registrado mais de uma vez (ex:
+    # publicação + certificação da mesma sentença, em datas próximas) — fica
+    # só a ocorrência mais recente por processo, evitando linha duplicada.
+    df = df.sort_values("Data_dt").drop_duplicates(subset=["Identificador"], keep="last")
+
+    linha_proc = _localizar_linha_cabecalho_processos(caminho_processos)
+    df_proc = _ler_excel(caminho_processos, sheet_name="Processos", header=linha_proc)
+    df_proc = df_proc[df_proc["Identificador"].notna()].copy()
+    df_proc["papeis"] = df_proc["Cliente"].apply(_extrai_papeis)
+    df_proc["polo"] = df_proc["papeis"].apply(_classifica_polo)
+    df_proc = df_proc.drop_duplicates(subset=["Identificador"], keep="last").set_index("Identificador")
+
+    lista = []
+    contagem: dict[str, int] = {}
+    for _, row in df.iterrows():
+        identificador = row["Identificador"]
+        if identificador not in df_proc.index:
+            # Processo mencionado no histórico de andamentos mas que não
+            # está (mais, ou ainda) na planilha de Processos atual — sem o
+            # cadastro do processo não dá pra saber o polo do cliente com
+            # segurança, então fica de fora em vez de arriscar um palpite.
+            continue
+        proc = df_proc.loc[identificador]
+
+        descricao_norm = row["descricao_norm"]
+        classificacao, resumo = _classificar_desfecho_andamento(
+            descricao_norm, proc["polo"], proc["Cliente"], proc["Partes ativas"], proc["Partes passivas"]
+        )
+        contagem[classificacao] = contagem.get(classificacao, 0) + 1
+
+        lista.append({
+            "identificador": _texto_seguro(identificador),
+            "numero_cnj": _texto_seguro(row["Numeração Padrão CNJ"]) or _texto_seguro(proc["Número CNJ"]),
+            "data": row["Data"],
+            "descricao_evento": descricao_norm,
+            "cliente": _texto_seguro(proc["Cliente"], tamanho_max=160),
+            "area": _texto_seguro(proc["Área"]),
+            "classificacao": classificacao,
+            "resumo": resumo,
+        })
+
+    lista.sort(key=lambda item: datetime.strptime(item["data"], "%d/%m/%Y"), reverse=True)
+
+    return {
+        "ano": ano,
+        "total": len(lista),
+        "classificacao_counts": contagem,
         "lista": lista,
     }
 
@@ -1126,6 +1347,14 @@ CONFIG_PLANILHAS_ATUALIZACAO = {
             "Identificador", "Assunto", "Situação", "Justiça", "Instância", "Área",
             "Data distribuição", "Valor ação", "Data dos últimos andamentos", "Cliente",
             "Estado", "Cidade",
+        ],
+    },
+    "andamentos": {
+        "nome_exibicao": "Andamentos",
+        "sheet_name": "Andamentos",
+        "coluna_marcador": "Numeração Padrão CNJ",
+        "colunas_obrigatorias": [
+            "Data", "Tipo de Andamento", "Descrição", "Identificador", "Numeração Padrão CNJ",
         ],
     },
 }

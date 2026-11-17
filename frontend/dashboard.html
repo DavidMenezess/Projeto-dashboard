@@ -23,7 +23,7 @@
 </script>
 <script>
 // Variáveis globais com os dados vindos da API (preenchidas após o login)
-let DATA, STALLED, TASKTYPE, TASKLIST, INDICADORES, PROCESSOS, CLIENTES;
+let DATA, STALLED, TASKTYPE, TASKLIST, INDICADORES, PROCESSOS, CLIENTES, SENTENCAS;
 let clientesOuvintesLigados = false;
 let categoriaTipoChartAtiva = 'processual';
 
@@ -56,6 +56,7 @@ const mapaPaineis = {
   'section-parados': 'painel-parados',
   'section-processos': 'painel-processos',
   'section-clientes': 'painel-clientes',
+  'section-novidades': 'painel-novidades',
   'section-apresentacao': 'painel-apresentacao',
   'section-usuarios': 'painel-usuarios',
   'section-atualizacao': 'painel-atualizacao',
@@ -558,6 +559,8 @@ function renderizarComparativo() {
   .badge.execucao{background:rgba(var(--gold-rgb),.15); color:var(--accent);}
   .badge.atraso{background:rgba(201,123,95,.15); color:var(--red);}
   .badge.revisao{background:rgba(155,138,166,.18); color:var(--purple);}
+  .badge.favoravel{background:rgba(127,168,118,.15); color:var(--green);}
+  .badge.acordo{background:rgba(111,147,166,.15); color:var(--teal);}
 
   /* ===== Modo Apresentação (slides grandes, para TV/projetor) ===== */
   .apresentacao-container{
@@ -983,6 +986,7 @@ function renderizarComparativo() {
     <button class="nav-link" data-target="section-parados">Processos Parados</button>
     <button class="nav-link" data-target="section-processos">Processos</button>
     <button class="nav-link" data-target="section-clientes">Clientes</button>
+    <button class="nav-link" data-target="section-novidades">Novidades</button>
     <button class="nav-link" data-target="section-apresentacao">Apresentação</button>
     <button class="nav-link" data-target="section-usuarios" id="navUsuarios" style="display:none;">Usuários</button>
     <button class="nav-link" data-target="section-atualizacao">Atualização</button>
@@ -3008,6 +3012,155 @@ async function aplicarTarefasPeriodoClientes() {
 
 </div><!-- fim painel-clientes -->
 
+<div class="tab-panel" id="painel-novidades">
+<h1 id="section-novidades" style="margin-top:0; display:flex; align-items:center; gap:10px;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:22px;height:22px;color:var(--accent);"><path d="M12 2l3 7h7l-5.5 4.5L18.5 21 12 16.5 5.5 21l2-7.5L2 9h7z"/></svg> Novidades do ano</h1>
+<div class="subtitle">Processos novos e desfechos favoráveis de <span id="anoNovidadesTitulo"></span> até hoje</div>
+
+<div class="card full" style="margin-bottom:32px;">
+  <h2><span class="dot" style="background:var(--teal)"></span>Novas ações em <span id="anoNovasAcoes"></span> (<span id="countNovasAcoes"></span>)</h2>
+  <div class="upload-info">
+    Todos os processos com data de distribuição em <span id="anoNovasAcoes2"></span>, identificados pelo próprio número do processo — atualiza sozinho conforme a planilha de Processos é enviada na aba Atualização.
+  </div>
+  <div class="filters">
+    <input type="text" id="searchNovasAcoes" placeholder="Buscar por processo, cliente, área...">
+  </div>
+  <div class="table-wrap" style="max-height:480px;">
+    <table id="novasAcoesTable">
+      <thead>
+        <tr><th>Processo</th><th>Cliente</th><th>Área</th><th>Situação</th><th>Distribuição</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card full" style="margin-bottom:16px;">
+  <h2><span class="dot" style="background:var(--green)"></span>Sentenças e acordos favoráveis em <span id="anoSentencas"></span></h2>
+  <div class="upload-info">
+    Desfechos de mérito e acordos extraídos automaticamente da planilha de Andamentos, cruzados com o polo do cliente em cada processo —
+    <b>“Parcial” e “Revisar” precisam de uma olhada antes de divulgar</b>, pois o texto do andamento, por si só, não deixa claro o tamanho do ganho ou os termos do acordo.
+  </div>
+  <div class="kpi-grid" id="kpiGridSentencas"></div>
+  <div class="filters">
+    <input type="text" id="searchSentencas" placeholder="Buscar por processo, cliente, resumo...">
+    <select id="filterClassificacaoSentencas"><option value="">Todas as classificações</option></select>
+  </div>
+  <div class="table-wrap" style="max-height:480px;">
+    <table id="sentencasTable">
+      <thead>
+        <tr><th>Data</th><th>Processo</th><th>Cliente</th><th>Classificação</th><th>Resumo</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+const CLASSIFICACAO_BADGE_SENTENCAS = {
+  'Favorável': '<span class="badge favoravel">Favorável</span>',
+  'Desfavorável': '<span class="badge atraso">Desfavorável</span>',
+  'Parcial': '<span class="badge pendente">Parcial</span>',
+  'Acordo': '<span class="badge acordo">Acordo</span>',
+  'Revisar': '<span class="badge revisao">Revisar</span>',
+};
+
+function renderizarNovidades() {
+  // ===== Novas ações no ano (a partir de PROCESSOS.lista, já carregado para a aba Processos) =====
+  document.getElementById('anoNovidadesTitulo').textContent = anoSelecionado;
+  document.getElementById('anoNovasAcoes').textContent = anoSelecionado;
+  document.getElementById('anoNovasAcoes2').textContent = anoSelecionado;
+
+  // Mesmo filtro usado em renderizarIndicadores() para "processosDoAno" — refeito aqui porque
+  // aquela variável é local aquela função; mantém os dois pontos consistentes por filtrarem
+  // exatamente da mesma forma (mesmo campo "data_distribuicao", mesmo anoSelecionado do topo).
+  const novasAcoesDoAno = ((PROCESSOS && PROCESSOS.lista) || []).filter(p => {
+    if (!p.data_distribuicao) return false;
+    const partes = p.data_distribuicao.split('/');
+    return partes.length === 3 && parseInt(partes[2], 10) === anoSelecionado;
+  }).sort((a, b) => {
+    // mais recentes primeiro
+    const [da, ma, ya] = a.data_distribuicao.split('/');
+    const [db, mb, yb] = b.data_distribuicao.split('/');
+    return new Date(yb, mb - 1, db) - new Date(ya, ma - 1, da);
+  });
+  document.getElementById('countNovasAcoes').textContent = novasAcoesDoAno.length.toLocaleString('pt-BR');
+
+  function novaAcaoRow(p) {
+    return `
+      <tr>
+        <td>${esc(p.numero_cnj || p.identificador) || '—'}</td>
+        <td>${esc(p.cliente) || '—'}</td>
+        <td>${esc(p.area) || '—'}</td>
+        <td>${esc(p.situacao) || '—'}</td>
+        <td>${esc(p.data_distribuicao) || '—'}</td>
+      </tr>
+    `;
+  }
+  const novasAcoesPager = makePaginatedTable('novasAcoesTable', novaAcaoRow, 15);
+  novasAcoesPager.setData(novasAcoesDoAno);
+
+  const inputBuscaNovasAcoes = document.getElementById('searchNovasAcoes');
+  inputBuscaNovasAcoes.oninput = () => {
+    const q = inputBuscaNovasAcoes.value.toLowerCase();
+    const filtrado = !q ? novasAcoesDoAno : novasAcoesDoAno.filter(p =>
+      [p.numero_cnj, p.identificador, p.cliente, p.area].filter(Boolean).join(' ').toLowerCase().includes(q)
+    );
+    novasAcoesPager.setData(filtrado);
+  };
+
+  // ===== Sentenças e acordos favoráveis (planilha de Andamentos, ver /api/sentencas) =====
+  const dadosSentencas = SENTENCAS || { ano: anoSelecionado, total: 0, classificacao_counts: {}, lista: [] };
+  document.getElementById('anoSentencas').textContent = dadosSentencas.ano || anoSelecionado;
+
+  const ORDEM_CLASSIFICACAO = ['Favorável', 'Desfavorável', 'Parcial', 'Acordo', 'Revisar'];
+  const CLS_SENTENCAS = { 'Favorável': 'green', 'Desfavorável': 'red', 'Parcial': 'amber', 'Acordo': 'accent', 'Revisar': 'gray' };
+  const kpisSentencas = ORDEM_CLASSIFICACAO
+    .filter(c => dadosSentencas.classificacao_counts[c])
+    .map(c => ({ label: c, value: dadosSentencas.classificacao_counts[c], cls: CLS_SENTENCAS[c] }));
+  document.getElementById('kpiGridSentencas').innerHTML = (kpisSentencas.length ? kpisSentencas : [{ label: 'Nenhum desfecho encontrado ainda', value: 0, cls: 'gray' }]).map((k, i) => `
+    <div class="kpi ${k.cls}">
+      <div class="label">${k.label}</div>
+      <div class="value" id="kpiSentencasValor${i}">0</div>
+    </div>
+  `).join('');
+  kpisSentencas.forEach((k, i) => animarContador(document.getElementById('kpiSentencasValor' + i), k.value));
+
+  function sentencaRow(s) {
+    return `
+      <tr>
+        <td>${esc(s.data) || '—'}</td>
+        <td>${esc(s.numero_cnj || s.identificador) || '—'}</td>
+        <td>${esc(s.cliente) || '—'}</td>
+        <td>${CLASSIFICACAO_BADGE_SENTENCAS[s.classificacao] || esc(s.classificacao) || '—'}</td>
+        <td>${esc(s.resumo) || '—'}</td>
+      </tr>
+    `;
+  }
+  const sentencasPager = makePaginatedTable('sentencasTable', sentencaRow, 15);
+  sentencasPager.setData(dadosSentencas.lista);
+
+  const selClassificacaoSentencas = document.getElementById('filterClassificacaoSentencas');
+  selClassificacaoSentencas.innerHTML = '<option value="">Todas as classificações</option>' +
+    ORDEM_CLASSIFICACAO.filter(c => dadosSentencas.classificacao_counts[c]).map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('');
+
+  const inputBuscaSentencas = document.getElementById('searchSentencas');
+  function applySentencasFilters() {
+    const q = inputBuscaSentencas.value.toLowerCase();
+    const classificacao = selClassificacaoSentencas.value;
+    const filtrado = dadosSentencas.lista.filter(s => {
+      const matchesQ = !q || [s.numero_cnj, s.identificador, s.cliente, s.resumo].filter(Boolean).join(' ').toLowerCase().includes(q);
+      const matchesClassificacao = !classificacao || s.classificacao === classificacao;
+      return matchesQ && matchesClassificacao;
+    });
+    sentencasPager.setData(filtrado);
+  }
+  inputBuscaSentencas.addEventListener('input', applySentencasFilters);
+  selClassificacaoSentencas.addEventListener('change', applySentencasFilters);
+}
+</script>
+
+</div><!-- fim painel-novidades -->
+
 <div class="tab-panel" id="painel-apresentacao">
 <h1 id="section-apresentacao" style="margin-top:0;">Apresentação</h1>
 <div class="subtitle">Modo para exibir em TV ou projetor — use as setas do teclado ou os botões para navegar, e "Tela cheia" ao apresentar.</div>
@@ -3195,6 +3348,7 @@ async function aplicarTarefasPeriodoClientes() {
         <option value="tarefas">Tarefas</option>
         <option value="processos_parados">Processos Parados</option>
         <option value="processos">Processos</option>
+        <option value="andamentos">Andamentos</option>
       </select>
     </div>
     <div class="login-field" style="margin-bottom:0;">
@@ -3345,6 +3499,19 @@ async function carregarDashboard(abaFinal) {
     const respClientes = await fetchComAuth('/api/clientes');
     CLIENTES = respClientes;
 
+    // "Sentenças" depende da planilha de Andamentos, que é nova — pode ainda
+    // não ter sido enviada por quem usa o dashboard. Nesse caso a API devolve
+    // 503 (mesmo comportamento das outras planilhas antes do primeiro envio);
+    // em vez de travar o carregamento do resto do dashboard por isso, trata
+    // como "ainda sem dados" e deixa a aba "Novidades" mostrar zerado.
+    try {
+      SENTENCAS = await fetchComAuth('/api/sentencas');
+    } catch (erroSentencas) {
+      if (erroSentencas.message === 'SESSAO_EXPIRADA') throw erroSentencas;
+      console.warn('Sentenças favoráveis ainda não disponíveis:', erroSentencas.message);
+      SENTENCAS = { ano: null, total: 0, classificacao_counts: {}, lista: [] };
+    }
+
     renderizarProducao();
     renderizarTiposTarefa();
     renderizarIndicadores();
@@ -3352,6 +3519,7 @@ async function carregarDashboard(abaFinal) {
     renderizarProcessosParados();
     renderizarProcessos();
     renderizarClientes();
+    renderizarNovidades();
     renderizarApresentacao();
 
     if (usuarioAtual.tipo === 'admin') {

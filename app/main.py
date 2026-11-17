@@ -15,8 +15,11 @@ Ponto de entrada da API. Define as rotas:
   GET  /api/processos           -> cadastro geral de processos (protegida)
   GET  /api/clientes            -> visão agregada por cliente, juntando as 3 planilhas (protegida)
   GET  /api/clientes/tarefas-periodo -> tarefas concluídas por cliente num período livre (protegida)
-  POST /api/atualizar-planilha  -> substitui uma das 3 planilhas oficiais por um arquivo
-                                    enviado pelo usuário (tela "Atualização", protegida)
+  GET  /api/sentencas            -> sentenças/acordos favoráveis do ano, extraídos da planilha
+                                    de Andamentos (protegida)
+  POST /api/atualizar-planilha  -> substitui uma das planilhas oficiais (Tarefas, Processos
+                                    Parados, Processos ou Andamentos) por um arquivo enviado
+                                    pelo usuário (tela "Atualização", protegida)
   GET  /health                  -> checagem simples de saúde do serviço
 
 Rodar localmente:
@@ -44,7 +47,7 @@ from app.auth import (
 from app.rate_limit import verificar_bloqueio, registrar_falha, registrar_sucesso
 from app.data_processor import (
     processar_tarefas, processar_processos_parados, processar_tarefas_periodo, processar_processos,
-    processar_clientes, processar_tarefas_por_cliente_periodo,
+    processar_clientes, processar_tarefas_por_cliente_periodo, processar_sentencas,
     validar_planilha_atualizacao, CONFIG_PLANILHAS_ATUALIZACAO,
 )
 from app.cache import atualizar_cache, obter_cache, obter_ultima_sincronizacao
@@ -144,6 +147,7 @@ def _sincronizar_dados_locais():
         logger.warning("Planilha de processos não encontrada em %s — aguardando arquivo.", settings.CAMINHO_PLANILHA_PROCESSOS)
 
     _reprocessar_clientes()
+    _reprocessar_sentencas()
 
 
 def _reprocessar_clientes() -> None:
@@ -167,6 +171,28 @@ def _reprocessar_clientes() -> None:
         logger.warning("Não foi possível agregar clientes — alguma das 3 planilhas ainda não foi carregada.")
 
 
+def _reprocessar_sentencas() -> None:
+    """
+    Recalcula a visão "Sentenças e acordos favoráveis" (ver processar_sentencas
+    em data_processor.py), que cruza a planilha "Andamentos" com a planilha
+    "Processos" — por depender das duas ao mesmo tempo, é reprocessada tanto
+    na sincronização periódica/inicial quanto logo depois que QUALQUER UMA
+    das duas for trocada pela tela de Atualização (mesmo padrão de
+    _reprocessar_clientes, que depende de 3 planilhas em vez de 2).
+    """
+    data_ref = _data_referencia_configurada()
+    try:
+        dados_sentencas = processar_sentencas(
+            settings.CAMINHO_PLANILHA_ANDAMENTOS,
+            settings.CAMINHO_PLANILHA_PROCESSOS,
+            data_referencia=data_ref,
+        )
+        atualizar_cache("sentencas", dados_sentencas)
+        logger.info("Sentenças e acordos favoráveis processados com sucesso.")
+    except FileNotFoundError:
+        logger.warning("Não foi possível calcular sentenças favoráveis — planilha de Andamentos ou de Processos ainda não foi carregada.")
+
+
 # Caminho oficial (configurado em .env) de cada planilha que a tela de
 # Atualização pode substituir — usado tanto para saber onde salvar o arquivo
 # enviado quanto, depois, para reprocessá-lo pelo mesmo caminho de sempre.
@@ -174,6 +200,7 @@ CAMINHO_POR_TIPO_ATUALIZACAO = {
     "tarefas": settings.CAMINHO_PLANILHA_TAREFAS,
     "processos_parados": settings.CAMINHO_PLANILHA_PROCESSOS_PARADOS,
     "processos": settings.CAMINHO_PLANILHA_PROCESSOS,
+    "andamentos": settings.CAMINHO_PLANILHA_ANDAMENTOS,
 }
 
 
@@ -192,6 +219,8 @@ def _reprocessar_e_atualizar_cache(tipo: str) -> None:
         atualizar_cache("processos_parados", processar_processos_parados(settings.CAMINHO_PLANILHA_PROCESSOS_PARADOS, data_referencia=data_ref))
     elif tipo == "processos":
         atualizar_cache("processos", processar_processos(settings.CAMINHO_PLANILHA_PROCESSOS))
+    elif tipo == "andamentos":
+        pass  # "andamentos" só alimenta "sentencas" (reprocessada abaixo) — não tem cache próprio de tela.
     else:
         raise ValueError(f"Tipo desconhecido: {tipo}")
 
@@ -200,6 +229,11 @@ def _reprocessar_e_atualizar_cache(tipo: str) -> None:
     # também (sem quebrar a atualização da planilha principal se as outras
     # 2 ainda não existirem no servidor — _reprocessar_clientes já trata isso).
     _reprocessar_clientes()
+    # "Sentenças favoráveis" depende de "andamentos" + "processos" — qualquer
+    # uma das duas sendo trocada aqui pode mudar esses dados, então
+    # reprocessa também (mesmo raciocínio de _reprocessar_clientes acima).
+    if tipo in ("andamentos", "processos"):
+        _reprocessar_sentencas()
 
 
 @app.get("/health", tags=["Infraestrutura"])
@@ -538,6 +572,20 @@ def obter_dados_processos(usuario: Usuario = Depends(obter_usuario_autenticado))
     return dados
 
 
+@app.get("/api/sentencas", tags=["Dados"])
+def obter_dados_sentencas(usuario: Usuario = Depends(obter_usuario_autenticado)):
+    """
+    Sentenças, acordos e recursos do ano atual extraídos da planilha
+    "Andamentos" (ver processar_sentencas em data_processor.py), com
+    classificação automática de favorável/desfavorável ao escritório,
+    cruzando com o polo do cliente na planilha "Processos". Requer login.
+    """
+    dados = obter_cache("sentencas")
+    if dados is None:
+        raise HTTPException(status_code=503, detail="Dados ainda não sincronizados. Tente novamente em instantes.")
+    return dados
+
+
 @app.get("/api/clientes", tags=["Dados"])
 def obter_dados_clientes(usuario: Usuario = Depends(obter_usuario_autenticado)):
     """
@@ -588,12 +636,13 @@ async def atualizar_planilha(
 ):
     """
     Tela "Atualização": permite que a própria pessoa do escritório troque uma
-    das 3 planilhas oficiais (Tarefas, Processos Parados ou Processos)
-    enviando um arquivo novo, sem precisar mexer no servidor manualmente.
+    das planilhas oficiais (Tarefas, Processos Parados, Processos ou
+    Andamentos) enviando um arquivo novo, sem precisar mexer no servidor
+    manualmente.
 
     'tipo' deve ser uma das chaves de CONFIG_PLANILHAS_ATUALIZACAO
-    ("tarefas", "processos_parados" ou "processos") — a mesma planilha,
-    independente do nome do arquivo enviado.
+    ("tarefas", "processos_parados", "processos" ou "andamentos") — a mesma
+    planilha, independente do nome do arquivo enviado.
 
     O arquivo é validado (ver validar_planilha_atualizacao em
     data_processor.py) ANTES de substituir a planilha oficial: confere se
