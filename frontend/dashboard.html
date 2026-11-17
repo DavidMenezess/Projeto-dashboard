@@ -3058,7 +3058,6 @@ async function aplicarTarefasPeriodoClientes() {
 <script>
 const CLASSIFICACAO_BADGE_SENTENCAS = {
   'Favorável': '<span class="badge favoravel">Favorável</span>',
-  'Desfavorável': '<span class="badge atraso">Desfavorável</span>',
   'Parcial': '<span class="badge pendente">Parcial</span>',
   'Acordo': '<span class="badge acordo">Acordo</span>',
   'Revisar': '<span class="badge revisao">Revisar</span>',
@@ -3112,8 +3111,10 @@ function renderizarNovidades() {
   const dadosSentencas = SENTENCAS || { ano: anoSelecionado, total: 0, classificacao_counts: {}, lista: [] };
   document.getElementById('anoSentencas').textContent = dadosSentencas.ano || anoSelecionado;
 
-  const ORDEM_CLASSIFICACAO = ['Favorável', 'Desfavorável', 'Parcial', 'Acordo', 'Revisar'];
-  const CLS_SENTENCAS = { 'Favorável': 'green', 'Desfavorável': 'red', 'Parcial': 'amber', 'Acordo': 'accent', 'Revisar': 'gray' };
+  // "Desfavorável" não entra aqui de propósito — a aba é só sentenças/acordos
+  // favoráveis; a API já nem devolve esse valor (ver processar_sentencas).
+  const ORDEM_CLASSIFICACAO = ['Favorável', 'Parcial', 'Acordo', 'Revisar'];
+  const CLS_SENTENCAS = { 'Favorável': 'green', 'Parcial': 'amber', 'Acordo': 'accent', 'Revisar': 'gray' };
   const kpisSentencas = ORDEM_CLASSIFICACAO
     .filter(c => dadosSentencas.classificacao_counts[c])
     .map(c => ({ label: c, value: dadosSentencas.classificacao_counts[c], cls: CLS_SENTENCAS[c] }));

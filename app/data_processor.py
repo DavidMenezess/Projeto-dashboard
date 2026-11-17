@@ -912,7 +912,8 @@ def processar_processos(caminho_arquivo: str) -> dict:
 
 PADRAO_DESFECHO_ANDAMENTO = re.compile(
     r"julgad[oa]s?\s*(?:parcialmente\s*)?(?:im)?procedentes?"
-    r"|homologad[ao]\s*(?:a\s*)?(?:transa[çc][ãa]o|desist[êe]ncia)",
+    r"|homologad[ao]\s*(?:a\s*)?(?:transa[çc][ãa]o|desist[êe]ncia)"
+    r"|\bprovido\b|\bdesprovido\b",
     re.IGNORECASE,
 )
 
@@ -960,6 +961,43 @@ def _classificar_desfecho_andamento(descricao_norm: str, polo_cliente: str, clie
         else:
             resumo = f"Acordo homologado no processo de {nome_cliente}" + (f", com {nome_outra_parte}" if nome_outra_parte else "") + "."
         return "Acordo", resumo
+
+    # "Conhecido o recurso ... e provido/não-provido/desprovido" — resultado de
+    # recurso (apelação, agravo etc). Reaproveita a mesma lógica de polo do
+    # procedente/improcedente abaixo: quem aparece como apelante/agravante/
+    # recorrente já cai em "Polo Ativo (Autor)" (ver PAPEIS_POLO_ATIVO), então
+    # "provido" favorece esse lado e "não provido"/"desprovido" favorece o
+    # outro — não precisa saber quem era autor/réu na ação original.
+    if "provido" in texto or "desprovido" in texto:
+        em_parte = "em parte" in texto or "parcialmente" in texto
+        negado = "desprovido" in texto or bool(re.search(r"n[ãa]o[\s-]?provido", texto))
+
+        if polo_cliente not in ("Polo Ativo (Autor)", "Polo Passivo (Réu)"):
+            return "Revisar", (
+                f"Recurso {'não provido' if negado else 'provido'} no processo de {nome_cliente} — "
+                f"não foi possível identificar automaticamente se {nome_cliente} é o recorrente ou o recorrido, revisar."
+            )
+
+        eh_recorrente = polo_cliente == "Polo Ativo (Autor)"
+        nome_outra_parte_rec = _primeiro_nome_de(partes_passivas) if eh_recorrente else _primeiro_nome_de(partes_ativas)
+        contra_quem_rec = f" contra {nome_outra_parte_rec}" if nome_outra_parte_rec else ""
+        de_quem_rec = f" de {nome_outra_parte_rec}" if nome_outra_parte_rec else ""
+
+        if em_parte:
+            if eh_recorrente:
+                resumo = f"Recurso de {nome_cliente} provido em parte{contra_quem_rec} — favorabilidade parcial, revisar."
+            else:
+                resumo = f"Recurso{de_quem_rec} contra {nome_cliente} provido em parte — favorabilidade parcial, revisar."
+            return "Parcial", resumo
+
+        favoravel_rec = (eh_recorrente and not negado) or (not eh_recorrente and negado)
+        classificacao_rec = "Favorável" if favoravel_rec else "Desfavorável"
+        resultado_txt_rec = "não provido" if negado else "provido"
+        if eh_recorrente:
+            resumo = f"Recurso de {nome_cliente} {resultado_txt_rec}{contra_quem_rec}."
+        else:
+            resumo = f"Recurso{de_quem_rec} contra {nome_cliente} {resultado_txt_rec}."
+        return classificacao_rec, resumo
 
     em_parte = "em parte" in texto or "parcialmente" in texto
     improcedente = "improcedente" in texto
@@ -1075,6 +1113,13 @@ def processar_sentencas(caminho_andamentos: str, caminho_processos: str, data_re
         })
 
     lista.sort(key=lambda item: datetime.strptime(item["data"], "%d/%m/%Y"), reverse=True)
+
+    # Aba é "Sentenças e acordos favoráveis" — desfechos desfavoráveis ficam
+    # de fora da lista e da contagem exibida (a pedido do cliente do
+    # escritório). Continuam sendo classificados ali em cima normalmente,
+    # só não aparecem no resultado final.
+    lista = [item for item in lista if item["classificacao"] != "Desfavorável"]
+    contagem.pop("Desfavorável", None)
 
     return {
         "ano": ano,
