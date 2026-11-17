@@ -1013,7 +1013,10 @@ def processar_sentencas(caminho_andamentos: str, caminho_processos: str, data_re
     ano = (data_referencia or datetime.now()).year
 
     linha_and = _localizar_linha_cabecalho_andamentos(caminho_andamentos)
-    df = _ler_excel(caminho_andamentos, sheet_name="Andamentos", header=linha_and)
+    # engine="calamine" (biblioteca em Rust, ~6x mais rápida que o openpyxl
+    # padrão pra esse arquivo) — ver comentário em "engine_rapido" dentro de
+    # CONFIG_PLANILHAS_ATUALIZACAO, mesma razão aqui.
+    df = _ler_excel(caminho_andamentos, sheet_name="Andamentos", header=linha_and, engine="calamine")
     df = df[df["Identificador"].notna()].copy()
     df["Data_dt"] = pd.to_datetime(df["Data"], format="%d/%m/%Y", errors="coerce")
     df = df[df["Data_dt"].dt.year == ano]
@@ -1356,6 +1359,20 @@ CONFIG_PLANILHAS_ATUALIZACAO = {
         "colunas_obrigatorias": [
             "Data", "Tipo de Andamento", "Descrição", "Identificador", "Numeração Padrão CNJ",
         ],
+        # Essa planilha é MUITO maior que as outras 3 (uma linha por
+        # movimentação de cada processo, não uma por processo — já passou de
+        # 120 mil linhas numa exportação real) e o motor padrão (openpyxl)
+        # demorou ~21s só pra ler esse arquivo numa máquina de teste comum.
+        # Como validar_planilha_atualizacao lê o arquivo inteiro (pra contar
+        # linhas e conferir colunas) e o processamento lê de novo logo em
+        # seguida, isso dobra pra ~40s+ POR upload — tempo suficiente pra
+        # estourar o timeout de 60s de um proxy reverso típico numa VM mais
+        # fraca (foi exatamente o que causou um "HTTP 504" em produção).
+        # "calamine" (biblioteca em Rust) lê o MESMO arquivo em ~3s, com
+        # dado idêntico (mesmas colunas, tipos e valores, conferido
+        # manualmente) — usado só aqui, nas outras 3 planilhas (bem
+        # menores) o motor padrão continua de boa.
+        "engine_rapido": "calamine",
     },
 }
 
@@ -1403,6 +1420,8 @@ def validar_planilha_atualizacao(tipo: str, caminho_arquivo: str) -> dict:
     kwargs = {"header": linha_cabecalho}
     if config["sheet_name"]:
         kwargs["sheet_name"] = config["sheet_name"]
+    if config.get("engine_rapido"):
+        kwargs["engine"] = config["engine_rapido"]
     try:
         df = _ler_excel(caminho_arquivo, **kwargs)
     except Exception as exc:

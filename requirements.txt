@@ -14,6 +14,7 @@ sqlalchemy==2.0.35
 pandas==2.2.3
 openpyxl==3.1.5
 xlrd==2.0.1
+python-calamine==0.8.3  # motor de leitura mais rápido (Rust), usado só pra planilha de Andamentos (bem maior que as outras 3) — ver "engine_rapido" em data_processor.py
 
 # --- Configuração via variáveis de ambiente ---
 pydantic-settings==2.6.0
