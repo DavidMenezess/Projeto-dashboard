@@ -224,11 +224,16 @@ def _reprocessar_e_atualizar_cache(tipo: str) -> None:
     else:
         raise ValueError(f"Tipo desconhecido: {tipo}")
 
-    # "Clientes" agrega as 3 planilhas juntas — qualquer uma delas que for
-    # atualizada aqui pode mudar os dados de cliente, então reprocessa
-    # também (sem quebrar a atualização da planilha principal se as outras
-    # 2 ainda não existirem no servidor — _reprocessar_clientes já trata isso).
-    _reprocessar_clientes()
+    # "Clientes" agrega Tarefas + Processos Parados + Processos — "andamentos"
+    # não entra nessa conta, então reprocessar clientes a cada upload de
+    # Andamentos só releria essas 3 planilhas à toa (sem clientes
+    # mudar nada). Numa planilha tão maior que as outras, cada leitura a
+    # mais pesa — por isso só reprocessa quando é de fato uma das 3 que
+    # formam Clientes (sem quebrar a atualização da planilha principal se as
+    # outras 2 ainda não existirem no servidor — _reprocessar_clientes já
+    # trata isso).
+    if tipo != "andamentos":
+        _reprocessar_clientes()
     # "Sentenças favoráveis" depende de "andamentos" + "processos" — qualquer
     # uma das duas sendo trocada aqui pode mudar esses dados, então
     # reprocessa também (mesmo raciocínio de _reprocessar_clientes acima).
